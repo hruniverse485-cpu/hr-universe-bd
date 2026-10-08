@@ -1,0 +1,12 @@
+name = "hr-universe-bd"
+main = "worker/index.js"
+compatibility_date = "2026-10-08"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hr-universe-orders"
+database_id = "b43d5b0b-e62a-4ca4-9256-a477dd81be10"
