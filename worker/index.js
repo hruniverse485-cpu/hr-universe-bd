@@ -1,22 +1,789 @@
 
+/**
+ * HR UNIVERSE — Cloudflare Worker
+ * Compatible with existing orders table and migrations 0002–0004.
+ * Database-backed product prices. Browser prices are never trusted.
+ * Bangladesh COD only. International checkout remains disabled.
+ */
+
+const JSON_HEADERS = {
+  "Content-Type": "application/json; charset=utf-8",
+  "Cache-Control": "no-store",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "same-origin"
+};
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: JSON_HEADERS
+  });
+}
+
+function text(value, max = 200) {
+  return typeof value === "string"
+    ? value.trim().slice(0, max)
+    : "";
+}
+
+function integer(value, min, max) {
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n >= min && n <= max
+    ? n
+    : null;
+}
+
+function minorToMajor(minor, decimals) {
+  const factor = 10 ** decimals;
+
+  if (
+    !Number.isSafeInteger(minor) ||
+    minor % factor !== 0
+  ) return null;
+
+  return minor / factor;
+}
+
+async function health(env) {
+  if (!env.DB) {
+    return json({
+      success: false,
+      error: "Database connection unavailable"
+    }, 503);
+  }
+
+  try {
+    await env.DB.prepare("SELECT 1 AS ok").first();
+
+    return json({
+      success: true,
+      service: "HR UNIVERSE",
+      status: "running",
+      database: "connected"
+    });
+  } catch (error) {
+    console.error("Health check failed:", error);
+
+    return json({
+      success: false,
+      service: "HR UNIVERSE",
+      status: "degraded",
+      database: "unavailable"
+    }, 503);
+  }
+}
+
+async function listProducts(request, env) {
+  if (!env.DB) {
+    return json({
+      success: false,
+      error: "Database connection unavailable"
+    }, 503);
+  }
+
+  const url = new URL(request.url);
+
+  const country = text(
+    url.searchParams.get("country"), 2
+  ).toUpperCase();
+
+  const currency = text(
+    url.searchParams.get("currency"), 3
+  ).toUpperCase();
+
+  const q = text(url.searchParams.get("q"), 80);
+
+  const limitRaw = Number.parseInt(
+    url.searchParams.get("limit") || "24", 10
+  );
+
+  const limit = Number.isSafeInteger(limitRaw)
+    ? Math.min(50, Math.max(1, limitRaw))
+    : 24;
+
+  if (
+    !/^[A-Z]{2}$/.test(country) ||
+    !/^[A-Z]{3}$/.test(currency)
+  ) {
+    return json({
+      success: false,
+      error: "Valid country and currency are required"
+    }, 400);
+  }
+
+  try {
+    const result = await env.DB.prepare(`
+      SELECT
+        p.id AS product_id,
+        p.name,
+        p.slug,
+        p.description,
+        p.brand,
+
+        c.id AS category_id,
+        c.name AS category_name,
+
+        pp.price_minor,
+        pp.compare_at_price_minor,
+        pp.currency_code,
+
+        cur.symbol AS currency_symbol,
+        cur.decimal_places,
+
+        (
+          SELECT pi.image_url
+          FROM product_images pi
+          WHERE pi.product_id = p.id
+          ORDER BY pi.sort_order ASC
+          LIMIT 1
+        ) AS image_url
+
+      FROM products p
+
+      JOIN categories c
+        ON c.id = p.category_id
+       AND c.is_active = 1
+
+      JOIN product_prices pp
+        ON pp.product_id = p.id
+       AND pp.variant_id IS NULL
+       AND pp.country_code = ?
+       AND pp.currency_code = ?
+       AND pp.status = 'ACTIVE'
+       AND (
+         pp.valid_from IS NULL
+         OR datetime(pp.valid_from) <= CURRENT_TIMESTAMP
+       )
+       AND (
+         pp.valid_until IS NULL
+         OR datetime(pp.valid_until) > CURRENT_TIMESTAMP
+       )
+
+      JOIN countries co
+        ON co.country_code = pp.country_code
+       AND co.is_active = 1
+
+      JOIN currencies cur
+        ON cur.code = pp.currency_code
+       AND cur.is_active = 1
+
+      WHERE p.status = 'ACTIVE'
+        AND (
+          ? = ''
+          OR p.name LIKE '%' || ? || '%'
+          OR p.description LIKE '%' || ? || '%'
+        )
+
+      ORDER BY p.created_at DESC
+      LIMIT ?
+    `).bind(
+      country,
+      currency,
+      q,
+      q,
+      q,
+      limit
+    ).all();
+
+    return json({
+      success: true,
+      country,
+      currency,
+      count: result.results.length,
+      products: result.results
+    });
+
+  } catch (error) {
+    console.error("Product listing failed:", error);
+
+    return json({
+      success: false,
+      error: "Unable to load products"
+    }, 500);
+  }
+}
+
+async function createCodOrder(request, env) {
+  if (!env.DB) {
+    return json({
+      success: false,
+      error: "Database connection unavailable"
+    }, 503);
+  }
+
+  let raw;
+
+  try {
+    raw = await request.text();
+  } catch {
+    return json({
+      success: false,
+      error: "Unable to read request"
+    }, 400);
+  }
+
+  if (raw.length > 20000) {
+    return json({
+      success: false,
+      error: "Request too large"
+    }, 413);
+  }
+
+  let data;
+
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return json({
+      success: false,
+      error: "Invalid JSON request"
+    }, 400);
+  }
+
+  if (
+    !data ||
+    typeof data !== "object" ||
+    Array.isArray(data)
+  ) {
+    return json({
+      success: false,
+      error: "Invalid order information"
+    }, 400);
+  }
+
+  const country = text(
+    data.country_code || "BD", 2
+  ).toUpperCase();
+
+  const currency = text(
+    data.currency_code || "BDT", 3
+  ).toUpperCase();
+
+  const paymentMethod = text(
+    data.payment_method || "COD", 20
+  ).toUpperCase();
+
+  if (
+    country !== "BD" ||
+    currency !== "BDT" ||
+    paymentMethod !== "COD"
+  ) {
+    return json({
+      success: false,
+      error: "Only Bangladesh BDT Cash on Delivery is currently supported"
+    }, 400);
+  }
+
+  const customer =
+    data.customer && typeof data.customer === "object"
+      ? data.customer
+      : {};
+
+  const customerName = text(
+    data.customer_name || customer.name, 120
+  );
+
+  const phone = text(
+    data.customer_phone || customer.phone, 30
+  );
+
+  const address = text(
+    data.customer_address || customer.address, 1000
+  );
+
+  const district = text(
+    data.district || customer.district, 100
+  );
+
+  if (
+    !customerName ||
+    !phone ||
+    !address ||
+    !district
+  ) {
+    return json({
+      success: false,
+      error: "Name, phone, full address and district are required"
+    }, 400);
+  }
+
+  let requestedItems;
+
+  if (Array.isArray(data.items)) {
+    if (
+      data.items.length < 1 ||
+      data.items.length > 20
+    ) {
+      return json({
+        success: false,
+        error: "Order must contain 1 to 20 items"
+      }, 400);
+    }
+
+    requestedItems = data.items;
+  } else {
+    requestedItems = [{
+      product_id: data.product_id,
+      variant_id: data.variant_id,
+      quantity: data.quantity
+    }];
+  }
+
+  const normalized = [];
+
+  for (const item of requestedItems) {
+    const productId = text(
+      item && item.product_id, 100
+    );
+
+    const variantId = text(
+      item && item.variant_id, 100
+    ) || null;
+
+    const quantity = integer(
+      item && item.quantity, 1, 100
+    );
+
+    if (!productId || quantity === null) {
+      return json({
+        success: false,
+        error: "Each item needs a valid product_id and quantity"
+      }, 400);
+    }
+
+    normalized.push({
+      productId,
+      variantId,
+      quantity
+    });
+  }
+
+  try {
+    const countryRow = await env.DB.prepare(`
+      SELECT country_code
+      FROM countries
+      WHERE country_code = 'BD'
+        AND is_active = 1
+    `).first();
+
+    const currencyRow = await env.DB.prepare(`
+      SELECT code, decimal_places
+      FROM currencies
+      WHERE code = 'BDT'
+        AND is_active = 1
+    `).first();
+
+    if (!countryRow || !currencyRow) {
+      return json({
+        success: false,
+        error: "Bangladesh COD market is not activated in Admin setup"
+      }, 409);
+    }
+
+    const decimals = Number(
+      currencyRow.decimal_places
+    );
+
+    if (
+      !Number.isInteger(decimals) ||
+      decimals < 0 ||
+      decimals > 4
+    ) {
+      return json({
+        success: false,
+        error: "Currency configuration is invalid"
+      }, 500);
+    }
+
+    const pricedItems = [];
+    let subtotalMinor = 0;
+
+    for (const item of normalized) {
+      if (item.variantId) {
+        const variant = await env.DB.prepare(`
+          SELECT id
+          FROM product_variants
+          WHERE id = ?
+            AND product_id = ?
+            AND status = 'ACTIVE'
+        `).bind(
+          item.variantId,
+          item.productId
+        ).first();
+
+        if (!variant) {
+          return json({
+            success: false,
+            error: "One or more selected variants are unavailable"
+          }, 409);
+        }
+      }
+
+      const product = await env.DB.prepare(`
+        SELECT
+          p.id,
+          p.name,
+          pp.price_minor,
+          pp.currency_code,
+          pp.variant_id AS priced_variant_id,
+          pv.sku
+
+        FROM products p
+
+        JOIN categories c
+          ON c.id = p.category_id
+         AND c.is_active = 1
+
+        JOIN product_prices pp
+          ON pp.product_id = p.id
+         AND pp.country_code = 'BD'
+         AND pp.currency_code = 'BDT'
+         AND pp.status = 'ACTIVE'
+         AND (
+           pp.valid_from IS NULL
+           OR datetime(pp.valid_from) <= CURRENT_TIMESTAMP
+         )
+         AND (
+           pp.valid_until IS NULL
+           OR datetime(pp.valid_until) > CURRENT_TIMESTAMP
+         )
+
+        LEFT JOIN product_variants pv
+          ON pv.id = ?
+         AND pv.product_id = p.id
+         AND pv.status = 'ACTIVE'
+
+        WHERE p.id = ?
+          AND p.status = 'ACTIVE'
+          AND (
+            (? IS NULL AND pp.variant_id IS NULL)
+            OR
+            (
+              ? IS NOT NULL
+              AND (
+                pp.variant_id = ?
+                OR pp.variant_id IS NULL
+              )
+            )
+          )
+
+        ORDER BY
+          CASE WHEN pp.variant_id = ? THEN 0 ELSE 1 END
+
+        LIMIT 1
+      `).bind(
+        item.variantId,
+        item.productId,
+        item.variantId,
+        item.variantId,
+        item.variantId,
+        item.variantId
+      ).first();
+
+      if (!product) {
+        return json({
+          success: false,
+          error: "One or more products are unavailable for Bangladesh checkout"
+        }, 409);
+      }
+
+      const priceMinor = Number(product.price_minor);
+
+      const lineTotalMinor =
+        priceMinor * item.quantity;
+
+      if (
+        !Number.isSafeInteger(priceMinor) ||
+        priceMinor <= 0 ||
+        !Number.isSafeInteger(lineTotalMinor)
+      ) {
+        return json({
+          success: false,
+          error: "Invalid product price configuration"
+        }, 500);
+      }
+
+      // Only verified local Bangladesh warehouse stock
+      // can currently be ordered with COD.
+
+      const stock = await env.DB.prepare(`
+        SELECT
+          COALESCE(SUM(i.quantity), 0) AS available
+
+        FROM inventory i
+
+        JOIN warehouses w
+          ON w.id = i.warehouse_id
+
+        WHERE i.product_id = ?
+          AND (
+            i.variant_id = ?
+            OR (? IS NULL AND i.variant_id IS NULL)
+          )
+          AND w.country_code = 'BD'
+          AND w.status = 'ACTIVE'
+          AND i.verified_at IS NOT NULL
+      `).bind(
+        item.productId,
+        item.variantId,
+        item.variantId
+      ).first();
+
+      if (
+        !stock ||
+        Number(stock.available) < item.quantity
+      ) {
+        return json({
+          success: false,
+          error: `Insufficient verified Bangladesh stock for ${product.name}`
+        }, 409);
+      }
+
+      subtotalMinor += lineTotalMinor;
+
+      if (!Number.isSafeInteger(subtotalMinor)) {
+        return json({
+          success: false,
+          error: "Order total is too large"
+        }, 400);
+      }
+
+      pricedItems.push({
+        ...item,
+        name: product.name,
+        sku: product.sku || null,
+        priceMinor,
+        lineTotalMinor
+      });
+    }
+
+    const shipping = await env.DB.prepare(`
+      SELECT sr.base_cost_minor
+
+      FROM shipping_rates sr
+
+      JOIN shipping_methods sm
+        ON sm.id = sr.shipping_method_id
+
+      WHERE sr.country_code = 'BD'
+        AND sr.currency_code = 'BDT'
+        AND sr.status = 'ACTIVE'
+        AND sm.status = 'ACTIVE'
+        AND sm.fulfillment_type = 'LOCAL_WAREHOUSE'
+
+      ORDER BY sr.base_cost_minor ASC
+      LIMIT 1
+    `).first();
+
+    if (!shipping) {
+      return json({
+        success: false,
+        error: "Bangladesh local shipping rate is not configured; order was not created"
+      }, 409);
+    }
+
+    const shippingMinor = Number(
+      shipping.base_cost_minor
+    );
+
+    const totalMinor =
+      subtotalMinor + shippingMinor;
+
+    if (
+      !Number.isSafeInteger(shippingMinor) ||
+      shippingMinor < 0 ||
+      !Number.isSafeInteger(totalMinor)
+    ) {
+      return json({
+        success: false,
+        error: "Shipping or order total configuration is invalid"
+      }, 500);
+    }
+
+    const first = pricedItems[0];
+    const isSingleItem = pricedItems.length === 1;
+
+    const legacyUnitPrice = minorToMajor(
+      isSingleItem ? first.priceMinor : totalMinor,
+      decimals
+    );
+
+    const legacyTotal = minorToMajor(
+      totalMinor,
+      decimals
+    );
+
+    if (
+      legacyUnitPrice === null ||
+      legacyTotal === null ||
+      minorToMajor(shippingMinor, decimals) === null
+    ) {
+      return json({
+        success: false,
+        error: "Prices must use whole BDT amounts while legacy order compatibility is active"
+      }, 409);
+    }
+
+    const orderId = crypto.randomUUID();
+    const createdAt = new Date().toISOString();
+
+    const idempotencyKey = text(
+      request.headers.get("Idempotency-Key") ||
+      data.idempotency_key,
+      100
+    ) || crypto.randomUUID();
+
+    const statements = [
+      env.DB.prepare(`
+        INSERT INTO orders (
+          id,
+          product_id,
+          product_name,
+          unit_price,
+          quantity,
+          total,
+          payment_method,
+          customer_name,
+          customer_phone,
+          customer_address,
+          district,
+          status,
+          created_at,
+          country_code,
+          currency_code,
+          subtotal_minor,
+          shipping_cost_minor,
+          tax_minor,
+          total_minor,
+          fulfillment_type,
+          idempotency_key
+        )
+        VALUES (
+          ?, ?, ?, ?, ?, ?,
+          'COD', ?, ?, ?, ?,
+          'PENDING', ?, 'BD', 'BDT',
+          ?, ?, 0, ?,
+          'LOCAL_WAREHOUSE', ?
+        )
+      `).bind(
+        orderId,
+        isSingleItem ? first.productId : "MULTI",
+        isSingleItem
+          ? first.name
+          : `Order with ${pricedItems.length} items`,
+        legacyUnitPrice,
+        isSingleItem
+          ? first.quantity
+          : 1,
+        legacyTotal,
+        customerName,
+        phone,
+        address,
+        district,
+        createdAt,
+        subtotalMinor,
+        shippingMinor,
+        totalMinor,
+        idempotencyKey
+      )
+    ];
+
+    for (const item of pricedItems) {
+      statements.push(env.DB.prepare(`
+        INSERT INTO order_items (
+          id,
+          order_id,
+          product_id,
+          variant_id,
+          product_name_snapshot,
+          sku_snapshot,
+          unit_price_minor,
+          currency_code,
+          quantity,
+          line_total_minor,
+          fulfillment_type,
+          created_at
+        )
+        VALUES (
+          ?, ?, ?, ?, ?, ?, ?,
+          'BDT', ?, ?,
+          'LOCAL_WAREHOUSE', ?
+        )
+      `).bind(
+        crypto.randomUUID(),
+        orderId,
+        item.productId,
+        item.variantId,
+        item.name,
+        item.sku,
+        item.priceMinor,
+        item.quantity,
+        item.lineTotalMinor,
+        createdAt
+      ));
+    }
+
+    try {
+      await env.DB.batch(statements);
+    } catch (error) {
+      if (
+        String(error && error.message || "")
+          .toLowerCase()
+          .includes("unique")
+      ) {
+        const existing = await env.DB.prepare(`
+          SELECT id, status, created_at
+          FROM orders
+          WHERE idempotency_key = ?
+        `).bind(idempotencyKey).first();
+
+        if (existing) {
+          return json({
+            success: true,
+            duplicate: true,
+            message: "This order request was already received",
+            order: existing
+          });
+        }
+      }
+
+      throw error;
+    }
+
+    return json({
+      success: true,
+      message: "COD order received. Our team will confirm it.",
+      order: {
+        id: orderId,
+        status: "PENDING",
+        payment_method: "COD",
+        country_code: "BD",
+        currency_code: "BDT",
+        item_count: pricedItems.length,
+        subtotal_minor: subtotalMinor,
+        shipping_cost_minor: shippingMinor,
+        tax_minor: 0,
+        total_minor: totalMinor,
+        created_at: createdAt
+      }
+    }, 201);
+
+  } catch (error) {
+    console.error("HR UNIVERSE Order API Error:", error);
+
+    return json({
+      success: false,
+      error: "Unable to process order. Please try again."
+    }, 500);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const path = url.pathname;
 
-    const headers = {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store"
-    };
-
-    const json = (data, status = 200) => {
-      return new Response(JSON.stringify(data), {
-        status,
-        headers
-      });
-    };
-
-    // Health Check
-    if (url.pathname === "/api/health") {
+    if (path === "/api/health") {
       if (request.method !== "GET") {
         return json({
           success: false,
@@ -24,207 +791,41 @@ export default {
         }, 405);
       }
 
-      return json({
-        success: true,
-        service: "HR UNIVERSE",
-        status: "running"
-      });
+      return health(env);
     }
 
-    // Create COD Order
-    if (url.pathname === "/api/orders" && request.method === "POST") {
-      try {
-        if (!env.DB) {
-          return json({
-            success: false,
-            error: "Database connection unavailable"
-          }, 503);
-        }
-
-        const text = await request.text();
-
-        if (text.length > 20000) {
-          return json({
-            success: false,
-            error: "Request too large"
-          }, 413);
-        }
-
-        let data;
-
-        try {
-          data = JSON.parse(text);
-        } catch {
-          return json({
-            success: false,
-            error: "Invalid JSON request"
-          }, 400);
-        }
-
-        if (!data || typeof data !== "object" || Array.isArray(data)) {
-          return json({
-            success: false,
-            error: "Invalid order information"
-          }, 400);
-        }
-
-        // Support both nested and flat customer data
-        const customer =
-          data.customer && typeof data.customer === "object"
-            ? data.customer
-            : {};
-
-        const productId = String(
-          data.product_id || ""
-        ).trim();
-
-        const productName = String(
-          data.product_name || ""
-        ).trim();
-
-        const customerName = String(
-          data.customer_name || customer.name || ""
-        ).trim();
-
-        const phone = String(
-          data.customer_phone || customer.phone || ""
-        ).trim();
-
-        const address = String(
-          data.customer_address || customer.address || ""
-        ).trim();
-
-        const district = String(
-          data.district || customer.district || ""
-        ).trim();
-
-        const unitPrice = Number(data.unit_price);
-        const quantity = Number(data.quantity);
-
-        // Required field validation
-        if (
-          !productId ||
-          !productName ||
-          !customerName ||
-          !phone ||
-          !address ||
-          !Number.isSafeInteger(unitPrice) ||
-          unitPrice <= 0 ||
-          !Number.isSafeInteger(quantity) ||
-          quantity < 1 ||
-          quantity > 100
-        ) {
-          return json({
-            success: false,
-            error: "Please provide valid order information"
-          }, 400);
-        }
-
-        // Field length validation
-        if (
-          productId.length > 100 ||
-          productName.length > 200 ||
-          customerName.length > 120 ||
-          phone.length > 30 ||
-          address.length > 1000 ||
-          district.length > 100
-        ) {
-          return json({
-            success: false,
-            error: "One or more fields are too long"
-          }, 400);
-        }
-
-        // Safe total calculation
-        const total = unitPrice * quantity;
-
-        if (!Number.isSafeInteger(total)) {
-          return json({
-            success: false,
-            error: "Invalid order total"
-          }, 400);
-        }
-
-        const id = crypto.randomUUID();
-        const createdAt = new Date().toISOString();
-
-        // Save order in Cloudflare D1
-        await env.DB.prepare(`
-          INSERT INTO orders (
-            id,
-            product_id,
-            product_name,
-            unit_price,
-            quantity,
-            total,
-            payment_method,
-            customer_name,
-            customer_phone,
-            customer_address,
-            district,
-            status,
-            created_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).bind(
-          id,
-          productId,
-          productName,
-          unitPrice,
-          quantity,
-          total,
-          "COD",
-          customerName,
-          phone,
-          address,
-          district || null,
-          "PENDING",
-          createdAt
-        ).run();
-
-        return json({
-          success: true,
-          message: "Order received successfully",
-          order: {
-            id,
-            product_id: productId,
-            product_name: productName,
-            unit_price: unitPrice,
-            quantity,
-            total,
-            payment_method: "COD",
-            status: "PENDING",
-            created_at: createdAt
-          }
-        }, 201);
-
-      } catch (error) {
-        console.error("HR UNIVERSE Order Error:", error);
-
+    if (path === "/api/products") {
+      if (request.method !== "GET") {
         return json({
           success: false,
-          error: "Unable to process order. Please try again."
-        }, 500);
+          error: "Method not allowed"
+        }, 405);
       }
+
+      return listProducts(request, env);
     }
 
-    // Do not expose orders or customer information publicly
-    if (url.pathname === "/api/orders") {
+    if (
+      path === "/api/orders" &&
+      request.method === "POST"
+    ) {
+      return createCodOrder(request, env);
+    }
+
+    if (path === "/api/orders") {
       return json({
         success: false,
         error: "Admin access is not configured"
       }, 403);
     }
 
-    // Unknown API endpoint
-    if (url.pathname.startsWith("/api/")) {
+    if (path.startsWith("/api/")) {
       return json({
         success: false,
         error: "API endpoint not found"
       }, 404);
     }
 
-    // Serve website static files
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
