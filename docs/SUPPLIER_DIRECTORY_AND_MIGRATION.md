@@ -26,6 +26,31 @@ A free account is not the same as free fulfillment. The customer payment is not 
 | Syncee | Supplier marketplace/discovery | Free plan permits browsing, but importing products into a store may require paid plan or DataFeed Manager. Do not treat free browsing as free fulfillment integration. | DISCOVERY ONLY |
 | Spocket | US/EU supplier marketplace | Free plan/trial wording exists, but useful importing/automation may require paid plan. Do not commit to subscription. | HOLD — paid-feature gate |
 
+
+## Long-term supplier partnership and growth support
+
+When contacting prospective suppliers, HR UNIVERSE should communicate its genuine ambition to grow into a substantial, long-term international brand and its preference for building durable supplier relationships rather than one-off transactions. Keep the message professional and honest: this is a growth intention, not a promise of guaranteed order volume, exclusivity, or future spend.
+
+Ask each supplier to specify the practical support available at each stage:
+
+### Support needed at launch (new/small business)
+- Low-friction onboarding, free account access where possible, and no unnecessary joining fee, deposit, MOQ, or monthly commitment.
+- A responsive contact for product sourcing, quotations, stock checks, order issues, and escalation.
+- Competitive product and destination-specific shipping prices, transparent fees, and current delivery estimates.
+- Product/variant information, quality evidence, tracking, dispatch updates, and clear cancellation, return, damaged-item, and refund procedures.
+- Support for neutral/white-label fulfillment and HR UNIVERSE-branded packaging, including exact setup costs, MOQ, lead time, and sample options.
+- Clear payment timing and any limits that affect a small business's cash flow.
+
+### Support expected as HR UNIVERSE grows
+- Better volume-based pricing or tiered discounts when actual order volumes justify them.
+- More stable stock allocation, faster processing, expanded destination coverage, and scalable fulfillment capacity.
+- Dedicated account management, priority issue resolution, and agreed service-level targets where available.
+- Improved custom packaging/branding options, lower packaging unit costs, and coordinated quality control.
+- Documented integration/API/feed support and advance notice of material catalog, pricing, shipping, or policy changes.
+- A partnership review process to agree realistic milestones based on demonstrated sales and operational performance.
+
+Record each supplier's answers, evidence, conditions, and review date in the supplier profile. Do not assume support exists until confirmed in writing. Compare the support actually offered to new businesses as well as the supplier's ability to scale. Do not promise exclusivity, guaranteed volume, deposits, or long-term commitments without explicit owner approval. A supplier earns preferred-partner status through verified quality, packaging, delivery, communication, fair pricing, and reliable issue resolution over time.
+
 ## Source notes
 - Printful free plan and pay-on-order cost model: https://help.printful.com/hc/en-us/articles/360014010240-How-much-does-Printful-cost and https://www.printful.com/pricing
 - Syncee free browsing vs paid importing: https://help.syncee.com/en/articles/8885830-pricing-and-plans and https://www.syncee.com/pricing/
