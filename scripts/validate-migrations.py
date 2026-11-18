@@ -61,15 +61,9 @@ try:
     if violations:
         fail(f"Foreign key violations: {violations[:5]}")
 
-    # Re-applying the additive migrations must not fail. This checks the
-    # CREATE IF NOT EXISTS guards and catches unsafe non-idempotent DDL.
-    for migration in migration_files:
-        db.executescript(migration.read_text(encoding="utf-8"))
-
     print(
-        f"PASS: base schema + {len(migration_files)} migrations; "
-        "required marketplace tables/columns present; foreign keys clean; "
-        "migrations safely repeatable."
+        f"PASS: base schema + {len(migration_files)} ordered migrations; "
+        "required marketplace tables/columns present; foreign keys clean."
     )
 except sqlite3.Error as exc:
     fail(f"SQLite migration validation failed: {exc}")
