@@ -22,7 +22,7 @@
   <div class="header-actions"><button class="text-action" id="savedToggle" type="button">♡ Saved <span id="savedCount">0</span></button><button class="text-action" id="exploreTop" type="button">Explore ↓</button></div>
  </div>
  <nav class="nav" aria-label="Main navigation">
-  <button class="active" data-category="all">Discover</button><button data-category="new">New Arrivals</button><button data-category="popular">Popular Finds</button><button data-category="all">Everyday Living</button><button data-category="all">Style & More</button><button data-category="all">Home & Lifestyle</button>
+  <button class="active" data-category="all">Discover</button><button data-category="new">New Arrivals</button><button data-category="all">All Categories</button><button data-category="all">Everyday Living</button><button data-category="all">Style & More</button><button data-category="all">Home & Lifestyle</button>
  </nav>
 </header>
 <main class="wrap">
@@ -33,13 +33,13 @@
  <section class="intro"><span class="eyebrow">Your space to explore</span><h2>Look around. Stay a while.</h2><p>Not every visit needs a shopping list. Discover useful finds, explore different collections, save what catches your eye, and come back whenever you like.</p></section>
  <section class="discovery" aria-label="Ways to explore">
   <button type="button" data-category="new"><strong>Fresh perspectives</strong><span>See what’s newly arrived →</span></button>
-  <button type="button" data-category="popular"><strong>Worth a closer look</strong><span>Explore popular discoveries →</span></button>
+  <button type="button" data-category="all"><strong>Explore by interest</strong><span>Browse the full collection →</span></button>
   <button type="button" id="savedExplore"><strong>Your saved finds</strong><span>Keep the things you love →</span></button>
   <button type="button" data-category="all"><strong>Explore everything</strong><span>Take the scenic route →</span></button>
  </section>
  <section id="catalog">
   <div class="section-heading"><div><span class="eyebrow">The collection</span><h2 id="catalogTitle">A little of everything</h2><p id="catalogSubtitle">Explore at your own pace. New discoveries are added as they become available.</p></div><span class="small-note" id="resultCount" aria-live="polite"></span></div>
-  <div class="toolbar" id="filters"><button class="filter active" data-category="all">All finds</button><button class="filter" data-category="new">New arrivals</button><button class="filter" data-category="popular">Popular finds</button><select class="sort" id="sortSelect" aria-label="Sort products"><option value="recent">Recently added</option><option value="name">Name A–Z</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></div>
+  <div class="toolbar" id="filters"><button class="filter active" data-category="all">All finds</button><button class="filter" data-category="new">New arrivals</button><button class="filter" data-category="all">All categories</button><select class="sort" id="sortSelect" aria-label="Sort products"><option value="recent">Recently added</option><option value="name">Name A–Z</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></div>
   <div class="product-grid" id="productGrid" aria-live="polite"><div class="state"><strong>Opening the collection</strong>Just a moment while we bring the latest available products into view.</div></div>
  </section>
  <section class="editorial"><div><span class="eyebrow">A better way to browse</span><h2>Your curiosity sets the pace.</h2><p>Save interesting finds for later. Compare details when you’re ready. We’ll keep the experience clear, calm and easy to explore—whether you’re browsing for a moment or staying a little longer.</p></div><button class="outline-btn" id="backToTop" type="button">Back to the beginning ↑</button></section>
