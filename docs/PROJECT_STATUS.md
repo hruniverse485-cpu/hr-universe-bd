@@ -91,3 +91,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - Worker syntax check: passed
 - Base schema + ordered migration validation: passed
 - This CI run validates code syntax, mocked API boundaries, storefront static behavior and SQLite migration compatibility. It does not prove live D1 data exists, browser rendering across devices, payment processing, safe concurrent stock reservation, or production deployment.
+
+
+## CJ supplier integration groundwork (2026-11-18)
+
+- Owner confirmed the existing CJ account is associated with a Shopify connection managed with Shafiq bhai. That account and connection must remain untouched.
+- HR UNIVERSE will use a separate CJ account registered with `hruniverse485@gmail.com`; API credentials must be stored as Cloudflare Worker secrets, never in Git, D1, browser code, or chat.
+- Added `migrations/0005_supplier_catalog_foundation.sql` for supplier external product mapping, destination-specific shipping quote evidence (including free-shipping flag, currency, delivery window and expiry), and auditable sync runs.
+- Added `docs/CJ_DROPSHIPPING_INTEGRATION.md` defining account isolation, secure authentication, product review, destination-specific free-shipping verification, landed-cost checks, and checkout gates.
+- Extended the disposable SQLite migration validator to require the three supplier integration tables.
+- CJ API credentials/account authorization are not yet available; no CJ API calls, product imports, supplier orders, production D1 migrations, or checkout activation have occurred. Migration 0005 is not applied to production.
