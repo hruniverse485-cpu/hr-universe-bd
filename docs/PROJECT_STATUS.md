@@ -101,3 +101,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added `docs/CJ_DROPSHIPPING_INTEGRATION.md` defining account isolation, secure authentication, product review, destination-specific free-shipping verification, landed-cost checks, and checkout gates.
 - Extended the disposable SQLite migration validator to require the three supplier integration tables.
 - CJ API credentials/account authorization are not yet available; no CJ API calls, product imports, supplier orders, production D1 migrations, or checkout activation have occurred. Migration 0005 is not applied to production.
+
+
+## Multi-supplier sourcing and migration route (2026-11-18)
+
+- Added `docs/SUPPLIER_DIRECTORY_AND_MIGRATION.md` with a no-subscription/no-deposit-first supplier shortlist, cost caveats, approval lifecycle, provider-neutral adapter contract, destination-specific vetting and supplier-switch migration procedure.
+- Candidates include CJ (priority, separate HR UNIVERSE account pending), AliExpress (seller-by-seller), DSers (connector, not supplier), Printful/Printify (POD only), EPROLO (research), Syncee (free browsing does not necessarily permit importing), and Spocket (paid-feature gate; no subscription approved).
+- No supplier is yet marked production-approved. Free entry does not mean free products/shipping; supplier payment may be due before customer funds settle.
+- No subscriptions, deposits, sample orders, supplier commitments, production migrations, or changes to the existing Shopify-linked CJ account were made.
