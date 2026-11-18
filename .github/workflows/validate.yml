@@ -28,6 +28,9 @@ jobs:
       - name: Check Worker JavaScript syntax
         run: node --check worker/index.js
 
+      - name: Run Worker API route tests
+        run: node --test tests/worker.test.mjs
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
