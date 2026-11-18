@@ -78,5 +78,16 @@ At every work session, record the current branch/head commit, changed files, tes
 - Storefront now requests the live BD/BDT catalog from `/api/products`; it does not ship demo products or invented prices.
 - Added product search, category/discovery navigation, sorting, saved products (browser-local), product detail modal, loading/empty/error states, mobile layout, and reduced-motion support.
 - Checkout is intentionally not presented by this storefront yet. The existing backend order handler checks stock but does not reserve it atomically; exposing checkout before resolving this could permit overselling. Payment and destination-market prerequisites also remain unverified.
-- Added three static storefront regression tests to `tests/worker.test.mjs`. CI must pass before this checkpoint is considered validated.
+- Added four storefront regression tests to `tests/worker.test.mjs`, including a JavaScript syntax parse check. GitHub Actions run #18 (commit `8a238860fbe69dcca66c3ae8da0d5e58df98f19b`) completed successfully: all 15 Node tests passed, Worker syntax validation passed, and all ordered SQL migrations validated against disposable SQLite.
 - No production deployment, live database migration, payment activation, or changes to `main` were performed.
+
+
+## Verified CI result for premium storefront milestone
+
+- Workflow run: [#18](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44274782272)
+- Commit: `8a238860fbe69dcca66c3ae8da0d5e58df98f19b`
+- Final result: **success**
+- Node test suite: **15 passed, 0 failed**
+- Worker syntax check: passed
+- Base schema + ordered migration validation: passed
+- This CI run validates code syntax, mocked API boundaries, storefront static behavior and SQLite migration compatibility. It does not prove live D1 data exists, browser rendering across devices, payment processing, safe concurrent stock reservation, or production deployment.
