@@ -84,11 +84,11 @@ async function listProducts(request, env) {
   const url = new URL(request.url);
 
   const country = text(
-    url.searchParams.get("country"), 2
+    url.searchParams.get("country"), 10
   ).toUpperCase();
 
   const currency = text(
-    url.searchParams.get("currency"), 3
+    url.searchParams.get("currency"), 10
   ).toUpperCase();
 
   const q = text(url.searchParams.get("q"), 80);
