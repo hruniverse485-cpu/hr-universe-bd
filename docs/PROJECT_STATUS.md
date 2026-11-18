@@ -13,7 +13,7 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 - The current Worker rejects non-BD, non-BDT, and non-COD orders.
 - The Worker requires an active Bangladesh country/currency configuration and an active local-warehouse shipping rate before accepting an order.
 - The Worker writes the legacy order row and corresponding `order_items` in one D1 batch.
-- `public/index.html` remains an older Bangladesh COD demo storefront with four hard-coded sample products. Its product IDs and presentation are not evidence of a populated, order-ready catalog.
+- `public/index.html` has been replaced with an original premium, low-pressure discovery storefront. It fetches products from `/api/products` for BD/BDT, supports search, category navigation, sorting, saved products, product detail modal, responsive layouts, and reduced-motion preferences. It shows no hard-coded sample products and no fake-order fallback. It is currently a browsing/catalog experience; customer checkout is intentionally not exposed in this iteration.
 - `public/HR_UNIVERSE_V2_preview_index.html` is a preview, not a production-ready global storefront. It explicitly labels its catalog as preview-only.
 - `worker/schema.sql` contains the legacy `orders` base table. Marketplace tables and columns are added by ordered migrations.
 - International payment acceptance, live supplier integrations, verified warehouse inventory, customer accounts, admin authentication, refunds, AI shopping, and image search are not implemented as production-ready features.
@@ -47,14 +47,14 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 
 - Added `tests/worker.test.mjs` and wired it into GitHub Actions with `node --test`.
 - The tests exercise API boundary behavior with lightweight Worker environment mocks; they do not yet exercise a complete D1-backed order transaction or browser checkout.
-- The existing storefront still contains hard-coded demo products and a demo-mode fallback message when the API fails. This is a known launch-blocking defect: it must be replaced with API-backed catalog rendering and must never imply that a failed server request created an order.
+- Replaced the hard-coded demo storefront with an API-backed discovery/catalog experience. Added regression tests asserting that the storefront fetches live products, contains no hard-coded demo catalog, never claims a failed request created an order, and includes responsive browsing/search/saved-product behavior.
 - The order handler checks stock before creating the order but does not reserve/decrement inventory. Concurrent checkout requests could therefore oversell stock. Do not treat current inventory checking as safe stock reservation until that workflow is implemented and tested.
 
 ## Next implementation sequence
 
 1. Run and fix the new CI checks; inspect the exact migration history and D1 deployment configuration.
 2. Add backend tests for product listing, country/currency gating, pricing, stock, shipping, COD order creation, duplicate requests, and malformed inputs.
-3. Replace the demo storefront with the approved HR UNIVERSE premium marketplace experience while keeping checkout disabled until the market/payment prerequisites are met.
+3. Extend the API-backed premium storefront with real category metadata, verified product imagery/details, and accessibility/browser checks; keep checkout disabled until stock reservation and market/payment prerequisites are met.
 4. Implement authentication and role-based authorization before exposing any admin or customer-private endpoints.
 5. Implement customer accounts, cart, order history/tracking, and support workflows.
 6. Implement supplier/warehouse/shipping integrations with verified stock, delivery estimates, and landed-cost calculation.
@@ -70,3 +70,13 @@ The owner retains control of banking, payment credentials, legal declarations, p
 ## Session rule
 
 At every work session, record the current branch/head commit, changed files, test results, unresolved defects, blockers, and the next exact action. Never report a feature as complete without implementation and verification evidence.
+
+
+## Latest implementation checkpoint (2026-11-18)
+
+- Replaced `public/index.html` on the Feature branch with a responsive premium discovery storefront based on the owner's approved editorial + marketplace direction.
+- Storefront now requests the live BD/BDT catalog from `/api/products`; it does not ship demo products or invented prices.
+- Added product search, category/discovery navigation, sorting, saved products (browser-local), product detail modal, loading/empty/error states, mobile layout, and reduced-motion support.
+- Checkout is intentionally not presented by this storefront yet. The existing backend order handler checks stock but does not reserve it atomically; exposing checkout before resolving this could permit overselling. Payment and destination-market prerequisites also remain unverified.
+- Added three static storefront regression tests to `tests/worker.test.mjs`. CI must pass before this checkpoint is considered validated.
+- No production deployment, live database migration, payment activation, or changes to `main` were performed.
