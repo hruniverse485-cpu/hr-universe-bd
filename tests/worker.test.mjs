@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { Script } from "node:vm";
 
 const workerSource = readFileSync(
   new URL("../worker/index.js", import.meta.url),
@@ -133,4 +134,10 @@ test("storefront provides search, saved products, responsive layout and relaxed 
   assert.match(storefrontSource, /@media\(max-width:600px\)/);
   assert.match(storefrontSource, /No rush/);
   assert.match(storefrontSource, /prefers-reduced-motion/);
+});
+
+test("storefront JavaScript parses without syntax errors", () => {
+  const scripts = [...storefrontSource.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
+  assert.equal(scripts.length, 1);
+  assert.doesNotThrow(() => new Script(scripts[0][1]));
 });
