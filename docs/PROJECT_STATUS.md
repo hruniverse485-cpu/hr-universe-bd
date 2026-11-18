@@ -29,9 +29,17 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 
 ## Validation added in this checkpoint
 
-- `.github/workflows/validate.yml` runs Worker syntax validation and the SQLite migration validator on Feature-branch pushes, pull requests, and manual dispatch.
+- `.github/workflows/validate.yml` runs Worker syntax validation, automated Worker API route tests, and the SQLite migration validator on Feature-branch pushes, pull requests, and manual dispatch.
+- `tests/worker.test.mjs` adds Node built-in tests for health checks, route/method handling, invalid product-market parameters, malformed/oversized order payloads, database availability, and the unauthenticated order-management boundary.
 - `scripts/validate-migrations.py` applies the legacy base schema followed by every ordered SQL migration to an in-memory SQLite database, checks required marketplace tables and order columns, and checks foreign keys. Migrations are one-time ordered schema changes; do not reapply them to an already-migrated database.
 - The first GitHub Actions run (run #3, commit `82a060b`) completed successfully: Worker JavaScript syntax check passed, all four SQL migrations applied to a disposable in-memory SQLite database, required marketplace tables/columns were present, and foreign-key checks were clean. This validates syntax and migration compatibility only; it is not an end-to-end or production test.
+
+## Newly added automated test coverage (2026-11-18)
+
+- Added `tests/worker.test.mjs` and wired it into GitHub Actions with `node --test`.
+- The tests exercise API boundary behavior with lightweight Worker environment mocks; they do not yet exercise a complete D1-backed order transaction or browser checkout.
+- The existing storefront still contains hard-coded demo products and a demo-mode fallback message when the API fails. This is a known launch-blocking defect: it must be replaced with API-backed catalog rendering and must never imply that a failed server request created an order.
+- The order handler checks stock before creating the order but does not reserve/decrement inventory. Concurrent checkout requests could therefore oversell stock. Do not treat current inventory checking as safe stock reservation until that workflow is implemented and tested.
 
 ## Next implementation sequence
 
