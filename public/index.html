@@ -56,6 +56,7 @@
  const modal = document.getElementById("productModal");
  let products = [];
  let category = "all";
+ let savedOnly = false;
  let saved = new Set();
  try { saved = new Set(JSON.parse(localStorage.getItem("hu-saved-products") || "[]")); } catch {}
  const money = (minor, symbol, decimals) => {
@@ -68,14 +69,13 @@
  function state(title,message,buttonText,handler){grid.innerHTML='<div class="state"><strong>'+escapeHTML(title)+'</strong>'+escapeHTML(message)+(buttonText?'<br><button class="outline-btn" id="stateAction" type="button">'+escapeHTML(buttonText)+'</button>':"")+'</div>';if(buttonText)document.getElementById("stateAction").addEventListener("click",handler);}
  function filtered(){
   const term=search.value.trim().toLowerCase();
-  let list=products.filter(p=>{
+  let list=(savedOnly?products.filter(p=>saved.has(p.product_id)):products).filter(p=>{
    const hay=[p.name,p.description,p.brand,p.category_name].join(" ").toLowerCase();
    const match=!term||hay.includes(term);
-   const matchCategory=category==="all"||((category==="new"||category==="popular")?false:String(p.category_name||"").toLowerCase()===category);
+   const matchCategory=category==="all"||category==="new"||String(p.category_name||"").toLowerCase()===category;
    return match&&matchCategory;
   });
   if(category==="new")list=list.slice(0,12);
-  if(category==="popular")list=list.slice(0,12);
   const sort=document.getElementById("sortSelect").value;
   if(sort==="name")list.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   if(sort==="price-low")list.sort((a,b)=>Number(a.price_minor)-Number(b.price_minor));
@@ -117,7 +117,7 @@
  }
  document.querySelectorAll("[data-category]").forEach(btn=>btn.addEventListener("click",()=>{category=btn.dataset.category;setActive(category);document.getElementById("catalogTitle").textContent=category==="new"?"Fresh arrivals":category==="popular"?"Popular discoveries":"A little of everything";document.getElementById("catalog").scrollIntoView({behavior:"smooth"});render();}));
  search.addEventListener("input",render);document.getElementById("sortSelect").addEventListener("change",render);
- document.getElementById("savedToggle").addEventListener("click",()=>{const ids=[...saved];const found=products.filter(p=>ids.includes(p.product_id));if(!found.length){state("Your saved finds","Save products with the heart icon and they’ll be waiting here when you return.");return;}products=found;category="all";search.value="";setActive("all");render();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});});
+ document.getElementById("savedToggle").addEventListener("click",()=>{if(!saved.size){state("Your saved finds","Save products with the heart icon and they’ll be waiting here when you return.");return;}savedOnly=!savedOnly;category="all";search.value="";setActive("all");document.getElementById("catalogTitle").textContent=savedOnly?"Your saved finds":"A little of everything";render();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});});
  document.getElementById("savedExplore").addEventListener("click",()=>document.getElementById("savedToggle").click());
  document.getElementById("browseButton").addEventListener("click",()=>document.getElementById("catalog").scrollIntoView({behavior:"smooth"}));
  document.getElementById("exploreTop").addEventListener("click",()=>document.getElementById("catalog").scrollIntoView({behavior:"smooth"}));
