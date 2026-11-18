@@ -109,3 +109,28 @@ test("order management is not exposed without admin authentication", async () =>
   const response = await worker.fetch(request("/api/orders"), { DB: {} });
   assert.equal(response.status, 403);
 });
+
+const storefrontSource = readFileSync(
+  new URL("../public/index.html", import.meta.url),
+  "utf8"
+);
+
+test("storefront loads products from the live API instead of hard-coded demo products", () => {
+  assert.match(storefrontSource, /fetch\('\/api\/products\?/);
+  assert.doesNotMatch(storefrontSource, /const products\s*=\s*\[\s*\{/);
+  assert.match(storefrontSource, /No sample or unverified products are shown/);
+});
+
+test("storefront never claims a failed request created a demo order", () => {
+  assert.doesNotMatch(storefrontSource, /Demo mode:/i);
+  assert.doesNotMatch(storefrontSource, /submitOrder\s*\(/);
+  assert.doesNotMatch(storefrontSource, /fetch\('\/api\/orders/);
+});
+
+test("storefront provides search, saved products, responsive layout and relaxed browsing copy", () => {
+  assert.match(storefrontSource, /id="searchInput"/);
+  assert.match(storefrontSource, /hu-saved-products/);
+  assert.match(storefrontSource, /@media\(max-width:600px\)/);
+  assert.match(storefrontSource, /No rush/);
+  assert.match(storefrontSource, /prefers-reduced-motion/);
+});
