@@ -1,0 +1,37 @@
+name: HR UNIVERSE validation
+
+on:
+  push:
+    branches:
+      - feature/global-hybrid-rebuild
+  pull_request:
+    branches:
+      - feature/global-hybrid-rebuild
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Worker and database migrations
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check Worker JavaScript syntax
+        run: node --check worker/index.js
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate base schema and ordered SQL migrations
+        run: python scripts/validate-migrations.py
