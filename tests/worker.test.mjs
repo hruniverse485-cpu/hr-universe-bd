@@ -137,7 +137,10 @@ test("storefront provides search, saved products, responsive layout and relaxed 
 });
 
 test("storefront JavaScript parses without syntax errors", () => {
-  const scripts = [...storefrontSource.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
-  assert.equal(scripts.length, 1);
-  assert.doesNotThrow(() => new Script(scripts[0][1]));
+  const start = storefrontSource.indexOf("<script>");
+  const end = storefrontSource.indexOf("</script>", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const script = storefrontSource.slice(start + 8, end);
+  assert.doesNotThrow(() => new Script(script));
 });
