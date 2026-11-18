@@ -1,6 +1,6 @@
 # HR UNIVERSE — Project Status & Continuation Checkpoint
 
-Last reviewed: 2026-11-18  
+Last reviewed: 2026-11-18 (owner-approved design and automation requirements recorded)  
 Repository: `hruniverse485-cpu/hr-universe-bd`  
 Active development branch: `feature/global-hybrid-rebuild`  
 Stable branch: `main` (do not modify or merge without explicit owner approval)
@@ -18,6 +18,15 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 - `worker/schema.sql` contains the legacy `orders` base table. Marketplace tables and columns are added by ordered migrations.
 - International payment acceptance, live supplier integrations, verified warehouse inventory, customer accounts, admin authentication, refunds, AI shopping, and image search are not implemented as production-ready features.
 - No production deployment or live D1 migration has been verified in this review.
+
+## Owner-approved design and automation requirements (2026-11-18)
+
+- The owner approved the recently presented premium marketplace/catalog visual direction, including editorial lifestyle hero, marketplace homepage, product listing/catalog cards, and responsive mobile shopping experience. Treat these as approved design references; do not ask the owner to choose again. Build an original HR UNIVERSE design, not a direct copy.
+- Long-term operating principle: maximize automation while minimizing recurring cost. Prefer free tiers, open-source, and self-hostable components where practical; never assume a free tier is unlimited. Maintain a technology/service register with plan, quotas, actual usage, recurring/usage costs, upgrade triggers, alternatives, renewal dates, and owner approvals.
+- Plan a secure voice-control layer for owner operations, with authentication and confirmation for sensitive actions.
+- Plan an issue-reporting and resolution workflow: accept owner/customer reports, create auditable tickets, classify severity, collect privacy-safe diagnostics, investigate root causes across frontend/backend/database/integrations, propose or implement authorized fixes, run regression tests, track resolution, and notify the reporter. Never expose secrets or personal data in logs/AI prompts.
+- Automatic remediation must be bounded. Payment/refund actions, destructive database changes, permission changes, supplier commitments, and production deployments require owner approval.
+- Customer-facing service availability must be distinguished from AI/API usage quotas; no unlimited-free service promise.
 
 ## Safety and market activation
 
