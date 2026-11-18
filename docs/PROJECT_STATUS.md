@@ -109,3 +109,10 @@ At every work session, record the current branch/head commit, changed files, tes
 - Candidates include CJ (priority, separate HR UNIVERSE account pending), AliExpress (seller-by-seller), DSers (connector, not supplier), Printful/Printify (POD only), EPROLO (research), Syncee (free browsing does not necessarily permit importing), and Spocket (paid-feature gate; no subscription approved).
 - No supplier is yet marked production-approved. Free entry does not mean free products/shipping; supplier payment may be due before customer funds settle.
 - No subscriptions, deposits, sample orders, supplier commitments, production migrations, or changes to the existing Shopify-linked CJ account were made.
+
+
+## Long-term supplier relationship requirement (2026-11-18)
+
+- Supplier outreach must explain HR UNIVERSE's long-term growth ambition and interest in building a durable partnership as the business scales, without promising guaranteed future volume, exclusivity, or spend.
+- Ask what concrete support is available to a new/small business now and what additional support can be earned as real order volume grows: onboarding, sourcing, competitive pricing, payment terms/cash-flow flexibility, tracking, returns, account support, scalable fulfillment, volume pricing, and branded/white-label packaging.
+- Record supplier answers and written evidence; do not label future benefits as confirmed until the supplier confirms terms. Preferred-partner status must be earned through measured performance.
