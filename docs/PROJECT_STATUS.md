@@ -31,7 +31,7 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 
 - `.github/workflows/validate.yml` runs Worker syntax validation and the SQLite migration validator on Feature-branch pushes, pull requests, and manual dispatch.
 - `scripts/validate-migrations.py` applies the legacy base schema followed by every ordered SQL migration to an in-memory SQLite database, checks required marketplace tables and order columns, and checks foreign keys. Migrations are one-time ordered schema changes; do not reapply them to an already-migrated database.
-- CI results must be checked after GitHub starts the workflow. Adding a workflow is not the same as a passing test.
+- The first GitHub Actions run (run #3, commit `82a060b`) completed successfully: Worker JavaScript syntax check passed, all four SQL migrations applied to a disposable in-memory SQLite database, required marketplace tables/columns were present, and foreign-key checks were clean. This validates syntax and migration compatibility only; it is not an end-to-end or production test.
 
 ## Next implementation sequence
 
