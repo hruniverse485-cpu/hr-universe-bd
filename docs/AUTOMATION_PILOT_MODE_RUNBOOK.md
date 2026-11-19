@@ -66,3 +66,12 @@ This runbook and related code are on `feature/global-hybrid-rebuild`. Migration 
 - `/api/admin/orders/cod-ledger`: records evidence-backed COD collection, courier settlement, fees, refunds and adjustments. New entries remain pending review until an owner reviews them.
 - `/api/admin/orders/returns`: records returned parcel condition and disposition. It never modifies inventory.
 - Migration `0012_bangladesh_cod_reconciliation_returns.sql` adds the two evidence tables. Neither migration 0012 nor any other pending migration has been applied to production.
+
+
+## Owner inventory verification pilot
+- Use `/admin-inventory-verification.html` to review Bangladesh warehouse inventory rows.
+- Record a physical count, not a supplier's unverified stock claim. Provide a dated count sheet or photo/evidence reference.
+- The API treats `inventory.quantity` as available units and subtracts active `RESERVED` order quantities from the physical count. It blocks a physical count below reserved units.
+- Inventory quantity update and append-only verification evidence are written in one D1 batch. A stale concurrent edit is rejected; retry only after refreshing the inventory row.
+- This workflow does not contact suppliers, synchronize supplier stock, book couriers, or change customer orders.
+- The public catalog currently requires positive inventory with a non-null verification timestamp. A maximum verification age policy is still pending; operators must not treat an old timestamp as proof of current stock.
