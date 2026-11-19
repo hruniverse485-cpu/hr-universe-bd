@@ -2017,6 +2017,37 @@ async function manageCatalogAdmin(request, env) {
     if(result[0]?.meta?.changes!==1||result[1]?.meta?.changes!==1)throw new Error("Catalog update and audit were not both committed");
   };
   try{
+    if(data.operation==="save_category"){
+      const id=text(data.id,100)||crypto.randomUUID(),name=text(data.name,120),slug=text(data.slug,140).toLowerCase(),parent=text(data.parent_id,100)||null,sort=integer(data.sort_order??0,-100000,100000);
+      if(!name||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)||sort===null)return json({success:false,error:"Category name, valid slug and integer sort order are required"},400);
+      if(parent===id)return json({success:false,error:"A category cannot be its own parent"},400);
+      if(parent&&!await env.DB.prepare("SELECT id FROM categories WHERE id=?").bind(parent).first())return json({success:false,error:"Parent category not found"},409);
+      const before=await env.DB.prepare("SELECT * FROM categories WHERE id=?").bind(id).first();
+      if(before&&before.is_active)return json({success:false,error:"Deactivate category before editing its details"},409);
+      const mutation=before
+        ?env.DB.prepare("UPDATE categories SET name=?,slug=?,parent_id=?,sort_order=? WHERE id=? AND is_active=0").bind(name,slug,parent,sort,id)
+        :env.DB.prepare("INSERT INTO categories (id,name,slug,parent_id,is_active,sort_order) VALUES (?,?,?, ?,0,?)").bind(id,name,slug,parent,sort);
+      await recordCatalogAudit(mutation,"CATEGORY",id,before?"CATEGORY_UPDATED":"CATEGORY_CREATED",before,"categories",["id","name","slug","parent_id","is_active","sort_order"]);
+      return json({success:true,category:await env.DB.prepare("SELECT * FROM categories WHERE id=?").bind(id).first()},before?200:201);
+    }
+    if(data.operation==="set_category_status"){
+      const id=text(data.id,100),active=data.is_active;
+      if(!id||![true,false,0,1].includes(active))return json({success:false,error:"Category and active state are required"},400);
+      const before=await env.DB.prepare("SELECT * FROM categories WHERE id=?").bind(id).first();
+      if(!before)return json({success:false,error:"Category not found"},404);
+      if((active===true||active===1)&&before.parent_id){
+        const parent=await env.DB.prepare("SELECT is_active FROM categories WHERE id=?").bind(before.parent_id).first();
+        if(!parent||!parent.is_active)return json({success:false,error:"Activate the parent category first"},409);
+      }
+      if(active===false||active===0){
+        const children=await env.DB.prepare("SELECT COUNT(*) AS n FROM categories WHERE parent_id=? AND is_active=1").bind(id).first();
+        if(Number(children?.n||0)>0)return json({success:false,error:"Deactivate active child categories first"},409);
+      }
+      const value=active===true||active===1?1:0;
+      const mutation=env.DB.prepare("UPDATE categories SET is_active=? WHERE id=? AND is_active=?").bind(value,id,before.is_active);
+      await recordCatalogAudit(mutation,"CATEGORY",id,"CATEGORY_STATUS_CHANGED",before,"categories",["id","name","slug","parent_id","is_active","sort_order"]);
+      return json({success:true,id,is_active:value});
+    }
     if(data.operation==="save_product"){
       const id=text(data.id,100)||crypto.randomUUID(),name=text(data.name,180),slug=text(data.slug,180).toLowerCase(),category=text(data.category_id,100);
       if(!name||!category||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))return json({success:false,error:"Product name, category and valid slug are required"},400);
