@@ -1331,7 +1331,7 @@ test("Catalog administration requires owner authentication before database acces
 test("Catalog administration lists owner products only after authentication", async () => {
   let sql="",values=[];
   const DB={prepare(query){sql=query;return{bind(...args){values=args;return{all:async()=>({results:[{id:"p1",status:"DRAFT"}]})};}};}};
-  const response=await worker.fetch(request("/api/admin/catalog?view=products"),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  const response=await worker.fetch(request("/api/admin/catalog?view=products","GET",undefined,{authorization:"Bearer owner-secret"}),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
   const payload=await response.json();
   assert.equal(response.status,200);
   assert.equal(payload.products[0].id,"p1");
@@ -1341,12 +1341,13 @@ test("Catalog administration lists owner products only after authentication", as
 
 test("Catalog product creation stores a DRAFT and audits it atomically", async () => {
   const calls=[];
+  let mutationCommitted=false;
   const DB={
     prepare(sql){return{bind(...values){return{
-      first:async()=>sql.includes("SELECT id FROM categories")?{id:"cat"}:sql.includes("SELECT * FROM products")?null:{id:"p-new",status:"DRAFT"},
+      first:async()=>sql.includes("SELECT id FROM categories")?{id:"cat"}:sql.includes("SELECT * FROM products")?(mutationCommitted?{id:"p-new",status:"DRAFT"}:null):null,
       sql,values
     };}};},
-    batch:async statements=>{calls.push(statements);return[{meta:{changes:1}},{meta:{changes:1}}];}
+    batch:async statements=>{calls.push(statements);mutationCommitted=true;return[{meta:{changes:1}},{meta:{changes:1}}];}
   };
   const response=await worker.fetch(request("/api/admin/catalog","POST",JSON.stringify({
     operation:"save_product",name:"Cotton Shirt",slug:"cotton-shirt",category_id:"cat",description:"Soft cotton"
