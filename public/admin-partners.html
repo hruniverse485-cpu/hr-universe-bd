@@ -46,6 +46,37 @@ button{border:1px solid #526a82;border-radius:8px;background:#1c3651;color:white
 <div class="wide"><label>Evidence reference (rate sheet / official URL / quote)</label><input name="evidence_reference"></div>
 <div class="wide"><button class="primary">Save unverified rate card</button></div></form><div class="note">All rates remain UNVERIFIED. Automatic courier selection must not use them until evidence and validity are reviewed.</div><div class="actions" style="margin-top:8px"><button id="loadRates">Load rate cards</button></div><div id="rates" class="list"></div></section>
 <div class="grid">
+<section class="panel"><h2>Courier service-area register</h2><form id="areaForm">
+<div><label>Courier partner ID</label><input name="courier_id" required></div><div><label>District</label><input name="district" required></div>
+<div><label>Area / locality</label><input name="area_name"></div><div><label>Postcode</label><input name="postcode"></div>
+<div><label>Service type</label><select name="service_type"><option>STANDARD</option><option>EXPRESS</option><option>SAME_DAY</option><option>PICKUP_ONLY</option><option>RETURN_ONLY</option></select></div><div><label>Country code</label><input name="country_code" value="BD" maxlength="2"></div>
+<div class="wide"><label>Evidence reference (official coverage page / written confirmation)</label><input name="evidence_reference"></div>
+<div class="wide"><button class="primary">Save inactive service area</button></div></form><div class="note">Coverage claims are always inactive and unverified until evidence review is implemented.</div><div class="actions" style="margin-top:8px"><button id="loadAreas">Load service areas</button></div><div id="areas" class="list"></div></section>
+<section class="panel"><h2>Local supplier capability profile</h2><form id="profileForm">
+<div><label>Existing supplier ID</label><input name="supplier_id" required></div><div><label>Business type</label><select name="business_type"><option>MANUFACTURER</option><option>WHOLESALER</option><option>DISTRIBUTOR</option><option>IMPORTER</option><option>AUTHORIZED_RESELLER</option><option>OTHER</option></select></div>
+<div><label>District</label><input name="district"></div><div><label>Area</label><input name="area_name"></div>
+<div class="wide"><label>Pickup address (internal)</label><input name="pickup_address"></div>
+<div><label>Sample status</label><select name="sample_status"><option>NOT_REQUESTED</option><option>REQUESTED</option><option>RECEIVED</option><option>PASSED</option><option>FAILED</option></select></div>
+<div><label>Quality score (0–100, optional)</label><input name="quality_score" type="number" min="0" max="100"></div>
+<div><label>Dispatch score (0–100, optional)</label><input name="dispatch_score" type="number" min="0" max="100"></div>
+<div><label>Response score (0–100, optional)</label><input name="response_score" type="number" min="0" max="100"></div>
+<div><label><input name="direct_to_customer" type="checkbox" value="true" style="width:auto;min-height:auto"> Direct-to-customer claim</label></div>
+<div><label><input name="blind_shipping_supported" type="checkbox" value="true" style="width:auto;min-height:auto"> Blind-shipping claim</label></div>
+<div><label><input name="branded_packaging_supported" type="checkbox" value="true" style="width:auto;min-height:auto"> Branded packaging claim</label></div>
+<div class="wide"><label>Evidence reference</label><input name="verification_evidence"></div>
+<div class="wide"><button class="primary">Save unverified profile</button></div></form><div class="note">Claims and scores are owner-entered only; verification remains UNVERIFIED.</div></section>
+</div>
+<section class="panel"><h2>Local supplier product quote register</h2><form id="quoteForm">
+<div><label>Supplier ID</label><input name="supplier_id" required></div><div><label>Product ID</label><input name="product_id" required></div>
+<div><label>Variant ID (optional)</label><input name="variant_id"></div><div><label>Supplier SKU</label><input name="supplier_sku"></div>
+<div><label>Unit cost (minor currency units)</label><input name="unit_cost_minor" type="number" min="0" required></div><div><label>Currency</label><input name="currency_code" value="BDT" maxlength="3"></div>
+<div><label>Available quantity (unverified)</label><input name="available_quantity" type="number" min="0"></div><div><label>Minimum order quantity</label><input name="minimum_order_quantity" type="number" min="1" value="1"></div>
+<div><label>Lead time (hours)</label><input name="lead_time_hours" type="number" min="0"></div><div><label>Quote valid until</label><input name="valid_until" type="date"></div>
+<div class="wide"><label>Evidence reference</label><input name="evidence_reference"></div>
+<div class="wide"><button class="primary">Save pending quote</button></div></form>
+<div class="actions" style="margin-top:8px"><button id="loadQuotes">Load supplier quotes</button></div><div id="quotes" class="list"></div>
+<div class="note">Quote and stock data remain PENDING / unverified. This does not publish products or place supplier orders.</div></section>
+<div class="grid">
 <section class="panel"><h2>Save partner contact</h2><form id="contactForm">
 <div><label>Partner type</label><select name="partner_type"><option>COURIER</option><option>SUPPLIER</option></select></div><div><label>Partner ID</label><input name="partner_id" required></div>
 <div><label>Contact name</label><input name="contact_name"></div><div><label>Role / department</label><input name="role_title"></div>
@@ -74,17 +105,23 @@ const formData=f=>Object.fromEntries(new FormData(f).entries());
 const list=(id,rows,render)=>{const root=$(id);root.replaceChildren();if(!rows.length){root.textContent="No records found.";return}rows.forEach(row=>{const item=document.createElement("div");item.className="item";render(item,row);root.append(item)})};
 const line=(parent,title,detail)=>{const strong=document.createElement("strong");strong.textContent=title;const small=document.createElement("small");small.textContent=detail||"";parent.append(strong,small)};
 async function loadCouriers(){const d=await api("/api/admin/partners/couriers");list("couriers",d.partners,(e,p)=>line(e,p.partner_name+" · "+p.partner_code,p.onboarding_status+" / "+p.api_status+" · "+p.id))}
+async function loadAreas(){const d=await api("/api/admin/partners/service-areas");list("areas",d.service_areas,(e,a)=>line(e,a.district+" · "+(a.area_name||"All areas")+" · "+a.partner_name,a.service_type+" · INACTIVE / UNVERIFIED · "+a.id))}
+async function loadQuotes(){const d=await api("/api/admin/partners/supplier-quotes");list("quotes",d.quotes,(e,q)=>line(e,q.supplier_name+" · "+q.product_name,q.unit_cost_minor+" "+q.currency_code+" · "+q.quote_status+" · stock unverified · "+q.id))}
 async function loadRates(){const d=await api("/api/admin/partners/courier-rates");list("rates",d.rate_cards,(e,r)=>line(e,r.partner_name+" · "+r.rate_name,(r.destination_district||"All areas")+" · "+r.base_fee_minor+" "+r.currency_code+" · "+r.verification_status+" · "+r.id))}
 async function loadSuppliers(){const q=encodeURIComponent($("supplierSearch").value.trim());const d=await api("/api/admin/partners/suppliers?q="+q);list("suppliers",d.suppliers,(e,p)=>line(e,p.supplier_name+" · "+p.status,(p.origin_country_code||"Country n/a")+" · "+(p.verification_status||"PROFILE NOT SET")+" · "+p.id))}
 async function loadContacts(){const d=await api("/api/admin/partners/contacts");list("contacts",d.contacts,(e,p)=>line(e,(p.contact_name||"Unnamed contact")+" · "+p.partner_type,(p.email||p.phone||"No channel")+" · "+p.verification_status+" · "+(p.is_primary?"Primary":"Not primary")));}
 async function loadInteractions(){const d=await api("/api/admin/partners/interactions?limit=40");list("interactions",d.interactions,(e,p)=>line(e,p.partner_type+" · "+p.interaction_type,p.summary+" · "+(p.follow_up_at||"No follow-up") ))}
-async function refresh(){try{await Promise.all([loadCouriers(),loadSuppliers(),loadContacts(),loadInteractions(),loadRates()]);show("result","Partner data refreshed.",true)}catch(e){show("result",e.message,false)}}
+async function refresh(){try{await Promise.all([loadCouriers(),loadSuppliers(),loadContacts(),loadInteractions(),loadRates(),loadAreas(),loadQuotes()]);show("result","Partner data refreshed.",true)}catch(e){show("result",e.message,false)}}
 $("connect").addEventListener("click",async()=>{token=$("token").value.trim();if(!token){show("loginStatus","Enter the owner token.",false);return}try{await api("/api/admin/partners/couriers");$("login").classList.add("hidden");$("app").classList.remove("hidden");$("token").value="";await refresh()}catch(e){token="";show("loginStatus",e.message,false)}});
 $("refresh").addEventListener("click",refresh);$("loadRates").addEventListener("click",loadRates);$("searchSuppliers").addEventListener("click",loadSuppliers);
 $("supplierSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();loadSuppliers()}});
 $("disconnect").addEventListener("click",()=>{token="";$("app").classList.add("hidden");$("login").classList.remove("hidden");$("token").value="";show("loginStatus","Disconnected. Token cleared.",true)});
 $("courierForm").addEventListener("submit",async e=>{e.preventDefault();try{const d=await api("/api/admin/partners/couriers","POST",formData(e.currentTarget));show("result",d.message,true);e.currentTarget.reset();await loadCouriers()}catch(x){show("result",x.message,false)}});
 $("rateForm").addEventListener("submit",async e=>{e.preventDefault();try{const data=formData(e.currentTarget);for(const k of ["weight_from_grams","base_fee_minor","cod_fee_minor","return_fee_minor","remote_area_fee_minor","estimated_min_days","estimated_max_days"])data[k]=data[k]===""?null:Number(data[k]);for(const k of ["effective_from","effective_until"])if(data[k]==="")data[k]=null;const d=await api("/api/admin/partners/courier-rates","POST",data);show("result",d.message,true);e.currentTarget.reset();await loadRates()}catch(x){show("result",x.message,false)}});
+$("loadAreas").addEventListener("click",loadAreas);$("loadQuotes").addEventListener("click",loadQuotes);
+$("areaForm").addEventListener("submit",async e=>{e.preventDefault();try{const d=await api("/api/admin/partners/service-areas","POST",formData(e.currentTarget));show("result",d.message,true);e.currentTarget.reset();await loadAreas()}catch(x){show("result",x.message,false)}});
+$("profileForm").addEventListener("submit",async e=>{e.preventDefault();try{const data=formData(e.currentTarget);for(const k of ["quality_score","dispatch_score","response_score"])data[k]=data[k]===""?null:Number(data[k]);for(const k of ["direct_to_customer","blind_shipping_supported","branded_packaging_supported"])data[k]=e.currentTarget.elements[k].checked;const d=await api("/api/admin/partners/supplier-profiles","PUT",data);show("result",d.message,true)}catch(x){show("result",x.message,false)}});
+$("quoteForm").addEventListener("submit",async e=>{e.preventDefault();try{const data=formData(e.currentTarget);for(const k of ["unit_cost_minor","available_quantity","minimum_order_quantity","lead_time_hours"])data[k]=data[k]===""?null:Number(data[k]);if(data.valid_until==="")data.valid_until=null;const d=await api("/api/admin/partners/supplier-quotes","POST",data);show("result",d.message,true);e.currentTarget.reset();await loadQuotes()}catch(x){show("result",x.message,false)}});
 $("contactForm").addEventListener("submit",async e=>{e.preventDefault();try{const d=await api("/api/admin/partners/contacts","POST",formData(e.currentTarget));show("result",d.message,true);e.currentTarget.reset();await loadContacts()}catch(x){show("result",x.message,false)}});
 $("interactionForm").addEventListener("submit",async e=>{e.preventDefault();try{const d=await api("/api/admin/partners/interactions","POST",formData(e.currentTarget));show("result",d.message,true);e.currentTarget.reset();await loadInteractions()}catch(x){show("result",x.message,false)}});
 })();
