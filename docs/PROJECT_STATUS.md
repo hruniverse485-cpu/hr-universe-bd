@@ -301,3 +301,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added regression assertions for product-form population, selected-record ID binding, new-product reset affordance, and the existing no-browser-storage credential rule.
 - Changes are isolated to `public/admin-catalog.html` and `tests/worker.test.mjs` on `feature/global-hybrid-rebuild`. No database schema, production resource, supplier account, or customer data was changed.
 - CI for these commits is not yet confirmed; do not describe the fix as CI-verified until a successful workflow result is observed.
+
+
+## Catalog variant editing usability fix (2026-11-20)
+
+- Added owner-dashboard editing for non-active product variants through the existing audited save_variant operation.
+- Variant edit pre-fills SKU, display name and attributes and preserves the existing variant ID. Cancel resets the form. Active variants must be paused first, and the parent product must be non-active before variant edits.
+- Added dashboard-script assertions for variant edit controls, ID preservation and cancel behavior. Feature branch only; no production data, schema, accounts or external services changed.
+- CI and Node test execution have not yet been confirmed for this change.
