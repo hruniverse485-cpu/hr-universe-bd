@@ -1359,3 +1359,51 @@ test("Damaged returned parcels cannot be marked as restock candidates", async ()
   });
   assert.equal(response.status, 409);
 });
+
+
+test("COD ledger review records a human verification state", async () => {
+  let updateSql = "";
+  const DB = {
+    prepare(sql) {
+      return { bind() { updateSql = sql; return { run: async () => ({ meta: { changes: 1 } }) }; } };
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/cod-ledger", "PATCH", JSON.stringify({
+    entry_id: "entry-1", status: "VERIFIED", review_note: "Matched courier statement"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret", HR_ADMIN_OWNER_LABEL: "OWNER"
+  });
+  assert.equal(response.status, 200);
+  assert.match(updateSql, /status = 'PENDING_REVIEW'/);
+  assert.match(updateSql, /reviewed_at = CURRENT_TIMESTAMP/);
+});
+
+test("Courier settlement cannot exceed recorded customer COD collection", async () => {
+  const DB = {
+    prepare(sql) {
+      return { bind() { return { first: async () => sql.includes("SUM(CASE")
+        ? { collected: 1000, settled: 900 }
+        : { id: "order-bd", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "DELIVERED", total_minor: 1000 } }; } };
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/cod-ledger", "POST", JSON.stringify({
+    order_id: "order-bd", entry_type: "COURIER_SETTLEMENT_RECEIVED",
+    amount_minor: 200, evidence_reference: "bank statement"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /cannot exceed recorded customer COD collection/i);
+});
+
+test("COD operations dashboard parses and keeps owner token out of browser storage", () => {
+  const html = readFileSync(new URL("../public/admin-cod-operations.html", import.meta.url), "utf8");
+  const start = html.indexOf("<script>");
+  const end = html.indexOf("</script>", start);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotThrow(() => new Script(html.slice(start + 8, end)));
+  assert.match(html, /noindex,nofollow/);
+  assert.doesNotMatch(html, /localStorage|sessionStorage/);
+  assert.match(html, /PENDING REVIEW/);
+  assert.match(html, /inventory was not changed/i);
+});
