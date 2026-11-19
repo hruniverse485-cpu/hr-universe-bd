@@ -918,3 +918,13 @@ test("local supplier directory returns supplier records and rejects writes", asy
   );
   assert.equal(denied.status, 405);
 });
+
+
+test("partner operations dashboard inline JavaScript parses", () => {
+  const html = readFileSync(new URL("../public/admin-partners.html", import.meta.url), "utf8");
+  const scripts = [...html.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
+  assert.equal(scripts.length, 1);
+  assert.doesNotThrow(() => new Script(scripts[0][1]));
+  assert.match(html, /OWNER ACCESS ONLY/);
+  assert.match(html, /No email, WhatsApp, SMS or call is sent/);
+});
