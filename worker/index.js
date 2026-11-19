@@ -59,6 +59,32 @@ function convertMinorByRatio(minorValue, numeratorValue, denominatorValue) {
   return Number(rounded);
 }
 
+function canonicalizeForHash(value) {
+  if (Array.isArray(value)) {
+    return value.map(canonicalizeForHash);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .filter((key) => key !== "idempotency_key")
+        .sort()
+        .map((key) => [key, canonicalizeForHash(value[key])])
+    );
+  }
+  return value;
+}
+
+async function orderRequestFingerprint(data) {
+  const canonical = JSON.stringify(canonicalizeForHash(data));
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical)
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
 function constantTimeEqual(left, right) {
   if (typeof left !== "string" || typeof right !== "string") return false;
   let mismatch = left.length ^ right.length;
@@ -654,19 +680,45 @@ async function createCodOrder(request, env) {
     }, 400);
   }
 
+  let requestFingerprint;
+
+  try {
+    requestFingerprint = await orderRequestFingerprint(data);
+  } catch (error) {
+    console.error("Order request fingerprint failed:", error);
+    return json({
+      success: false,
+      error: "Unable to verify this order request"
+    }, 503);
+  }
+
   try {
     const existing = await env.DB.prepare(`
-      SELECT id, status, created_at
+      SELECT id, status, created_at, idempotency_request_hash
       FROM orders
       WHERE idempotency_key = ?
     `).bind(idempotencyKey).first();
 
     if (existing) {
+      if (
+        !existing.idempotency_request_hash ||
+        !constantTimeEqual(existing.idempotency_request_hash, requestFingerprint)
+      ) {
+        return json({
+          success: false,
+          error: "This Idempotency-Key was already used for a different order request. Use a new key."
+        }, 409);
+      }
+
       return json({
         success: true,
         duplicate: true,
         message: "This order request was already received",
-        order: existing
+        order: {
+          id: existing.id,
+          status: existing.status,
+          created_at: existing.created_at
+        }
       });
     }
   } catch (error) {
@@ -1052,14 +1104,15 @@ async function createCodOrder(request, env) {
           tax_minor,
           total_minor,
           fulfillment_type,
-          idempotency_key
+          idempotency_key,
+          idempotency_request_hash
         )
         VALUES (
           ?, ?, ?, ?, ?, ?,
           'COD', ?, ?, ?, ?,
           'PENDING', ?, 'BD', 'BDT',
           ?, ?, 0, ?,
-          'LOCAL_WAREHOUSE', ?
+          'LOCAL_WAREHOUSE', ?, ?
         )
       `).bind(
         orderId,
@@ -1080,7 +1133,8 @@ async function createCodOrder(request, env) {
         subtotalMinor,
         shippingMinor,
         totalMinor,
-        idempotencyKey
+        idempotencyKey,
+        requestFingerprint
       )
     ];
 
