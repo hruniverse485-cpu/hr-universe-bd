@@ -1489,7 +1489,7 @@ test("Catalog product activation rejects future-dated stock verification", async
 test("Inventory verification dashboard marks future timestamps as stale", async () => {
   let query="";
   const DB={prepare(sql){query=sql;return{bind(){return{all:async()=>({results:[]})};}};}};
-  const response=await worker.fetch(request("/api/admin/inventory/verification","GET"),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  const response=await worker.fetch(request("/api/admin/inventory/verification","GET",undefined,{authorization:"Bearer owner-secret"}),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
   assert.equal(response.status,200);
   assert.match(query,/datetime\(i\.verified_at\) > CURRENT_TIMESTAMP/);
 });
