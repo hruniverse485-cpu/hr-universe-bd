@@ -2021,7 +2021,7 @@ async function manageBangladeshCodLedger(request, env) {
           SELECT 1 FROM orders o WHERE o.id = ? AND o.delivery_status = 'DELIVERED'
             AND o.total_minor >= ? + COALESCE((
               SELECT SUM(amount_minor) FROM cod_reconciliation_entries
-              WHERE order_id = o.id AND entry_type = 'CUSTOMER_COD_COLLECTED' AND status <> 'DISPUTED'
+              WHERE order_id = o.id AND entry_type = 'CUSTOMER_COD_COLLECTED'
             ), 0)
         )`;
         insertValues.push(orderId, amount);
@@ -2030,7 +2030,7 @@ async function manageBangladeshCodLedger(request, env) {
         // check is part of the insert to avoid concurrent over-settlement.
         insertSql += ` WHERE ? + COALESCE((
           SELECT SUM(amount_minor) FROM cod_reconciliation_entries
-          WHERE order_id = ? AND entry_type = 'COURIER_SETTLEMENT_RECEIVED' AND status <> 'DISPUTED'
+          WHERE order_id = ? AND entry_type = 'COURIER_SETTLEMENT_RECEIVED'
         ), 0) <= COALESCE((
           SELECT SUM(amount_minor) FROM cod_reconciliation_entries
           WHERE order_id = ? AND entry_type = 'CUSTOMER_COD_COLLECTED' AND status = 'VERIFIED'
@@ -2131,8 +2131,7 @@ async function manageBangladeshReturnInspections(request, env) {
     if (disposition === "RESTOCK_CANDIDATE" && !["SEALED_INTACT","OPENED_INTACT"].includes(condition)) {
       return json({ success: false, error: "Damaged, incomplete, wrong or missing parcels cannot be marked as restock candidates" }, 409);
     }
-    const order = await env.DB.prepare(`SELECT o.id, o.country_code, o.currency_code, o.payment_method, o.delivery_status,
-      COALESCE((SELECT SUM(oi.quantity) FROM order_items oi WHERE oi.order_id = o.id), o.quantity) AS ordered_quantity
+    const order = await env.DB.prepare(`SELECT o.id, o.country_code, o.currency_code, o.payment_method, o.delivery_status
       FROM orders o WHERE o.id = ?`).bind(orderId).first();
     if (!order) return json({ success: false, error: "Order not found" }, 404);
     if (order.country_code !== "BD" || order.currency_code !== "BDT" || order.payment_method !== "COD" || order.delivery_status !== "RETURNED") {
