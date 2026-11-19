@@ -1370,6 +1370,28 @@ test("Catalog rejects invalid price and never activates it during creation", asy
   assert.equal(response.status,400);
 });
 
+test("Catalog product activation is blocked without verified market stock and active price", async () => {
+  const calls=[];
+  const DB={prepare(sql){return{bind(...values){calls.push({sql,values});return{first:async()=>sql.includes("SELECT * FROM products")?{id:"p1",status:"DRAFT",category_id:"cat"}:null};}};}};
+  const response=await worker.fetch(request("/api/admin/catalog","POST",JSON.stringify({
+    operation:"set_product_status",id:"p1",status:"ACTIVE",country_code:"BD",currency_code:"BDT"
+  }),{authorization:"Bearer owner-secret","content-type":"application/json"}),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  assert.equal(response.status,409);
+  assert.match((await response.json()).error,/fresh verified warehouse stock/);
+  assert.equal(calls.some(x=>x.sql.includes("UPDATE products SET status")),false);
+});
+
+test("Catalog dashboard script is valid and does not persist owner credentials", () => {
+  const html=readFileSync(new URL("../public/admin-catalog.html",import.meta.url),"utf8");
+  const start=html.indexOf("<script>"),end=html.indexOf("</script>",start);
+  assert.ok(start>=0&&end>start);
+  assert.doesNotThrow(()=>new Script(html.slice(start+8,end)));
+  assert.match(html,/noindex,nofollow/);
+  assert.doesNotMatch(html,/localStorage|sessionStorage/);
+  assert.match(html,/PENDING/);
+  assert.match(html,/Activate selected/);
+});
+
 test("Inventory verification requires owner authentication", async () => {
   let touched = false;
   const response = await worker.fetch(request("/api/admin/inventory/verification"), {
