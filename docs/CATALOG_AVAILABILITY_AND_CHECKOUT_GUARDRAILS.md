@@ -23,7 +23,7 @@ The storefront must never submit or control the final price. `POST /api/orders` 
 
 ## Verification freshness limitation
 
-A non-null `inventory.verified_at` proves that a verification record exists; it does not prove that the stock count was rechecked recently. Before public launch, implement a configurable freshness policy (maximum age by warehouse/SKU), a stock-verification workflow, and a clear operator warning for stale counts. Do not interpret the current listing filter as a freshness guarantee.
+Public catalog eligibility uses a configurable freshness limit: `HR_INVENTORY_MAX_AGE_HOURS` accepts 1–720 hours and defaults to 72 hours when unset or invalid. Stock older than this limit is excluded from both the available-quantity calculation and product eligibility. The owner inventory dashboard flags stale rows and displays the active limit. This is a system-level default, not a guarantee that physical stock cannot change between checks.
 
 ## Remaining storefront launch work
 
