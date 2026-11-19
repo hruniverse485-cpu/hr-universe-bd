@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS catalog_admin_audit (
   id TEXT PRIMARY KEY,
-  entity_type TEXT NOT NULL CHECK (entity_type IN ('PRODUCT','VARIANT','PRICE')),
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('CATEGORY','PRODUCT','VARIANT','PRICE')),
   entity_id TEXT NOT NULL,
   action TEXT NOT NULL,
   actor TEXT NOT NULL,
