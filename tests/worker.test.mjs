@@ -1395,6 +1395,7 @@ test("Courier settlement cannot exceed recorded customer COD collection", async 
     DB, HR_ADMIN_API_TOKEN: "owner-secret"
   });
   assert.equal(response.status, 409);
+  assert.match(insertSql, /SUM\(amount_minor\)/);
   assert.match((await response.json()).error, /cannot exceed recorded customer COD collection/i);
 });
 
