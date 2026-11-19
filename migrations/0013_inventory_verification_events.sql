@@ -4,6 +4,8 @@
 -- event table preserves the physical count, active reservations and resulting
 -- available count for each verification. No automatic supplier stock sync.
 
+ALTER TABLE inventory ADD COLUMN verification_token TEXT;
+
 CREATE TABLE IF NOT EXISTS inventory_verification_events (
   id TEXT PRIMARY KEY,
   inventory_id TEXT NOT NULL,
