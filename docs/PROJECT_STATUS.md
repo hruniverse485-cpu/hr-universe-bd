@@ -328,7 +328,7 @@ At every work session, record the current branch/head commit, changed files, tes
 - The HR UNIVERSE CJ account must be separate and must not affect the existing account associated with Shafiq bhai. CJ authorization and API credentials remain owner-controlled and are not yet configured.
 - Product image upload remains blocked on purpose: no R2 binding or bucket has been confirmed. The documented private-storage design remains the implementation specification; do not show fabricated image-upload success or expose unverified external image URLs.
 - Updated `docs/TECHNOLOGY_COST_AUTOMATION_REGISTER.md` to remove the stale claim that the current storefront is still a demo/legacy storefront and to document the no-upfront-cost gate.
-- This checkpoint is documentation-only. No runtime code, production data, Cloudflare resources, or live supplier accounts were changed. CI status for this documentation commit has not yet been confirmed.
+- This checkpoint is documentation-only. No runtime code, production data, Cloudflare resources, or live supplier accounts were changed. At the time this checkpoint was written, CI was pending; subsequent validation run 44601438920 passed on the then-current code tree.
 
 
 ## Catalog product editing usability fix (2026-11-20)
@@ -337,7 +337,7 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added an explicit **New product** action that clears selection and resets dependent variant/price panels while retaining safe BD/BDT defaults.
 - Added regression assertions for product-form population, selected-record ID binding, new-product reset affordance, and the existing no-browser-storage credential rule.
 - Changes are isolated to `public/admin-catalog.html` and `tests/worker.test.mjs` on `feature/global-hybrid-rebuild`. No database schema, production resource, supplier account, or customer data was changed.
-- CI for these commits is not yet confirmed; do not describe the fix as CI-verified until a successful workflow result is observed.
+- CI was pending at the time; subsequent validation run 44601438920 passed on the updated catalog dashboard and test tree.
 
 
 ## Catalog variant editing usability fix (2026-11-20)
@@ -345,7 +345,7 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added owner-dashboard editing for non-active product variants through the existing audited save_variant operation.
 - Variant edit pre-fills SKU, display name and attributes and preserves the existing variant ID. Cancel resets the form. Active variants must be paused first, and the parent product must be non-active before variant edits.
 - Added dashboard-script assertions for variant edit controls, ID preservation and cancel behavior. Feature branch only; no production data, schema, accounts or external services changed.
-- CI and Node test execution have not yet been confirmed for this change.
+- CI was pending at the time; subsequent validation run 44601438920 passed on the updated catalog dashboard and test tree.
 
 
 ## Catalog category editing usability fix (2026-11-20)
