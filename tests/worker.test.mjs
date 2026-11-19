@@ -164,3 +164,50 @@ test("Worker delegates authoritative stock reservation to database triggers", ()
   assert.match(workerSource, /reservation inside the same D1 batch/);
   assert.match(workerSource, /A valid Idempotency-Key header/);
 });
+
+
+test("supplier comparison endpoint is owner-token protected and unavailable without a configured secret", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/sourcing/compare?product_id=p&variant_id=v&destination=US"),
+    { DB: {}, HR_ADMIN_API_TOKEN: "" }
+  );
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /not configured/i);
+});
+
+test("supplier comparison endpoint rejects invalid owner credentials before database access", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/sourcing/compare?product_id=p&variant_id=v&destination=US", "GET", undefined, {
+      authorization: "Bearer wrong-token"
+    }),
+    {
+      DB: { prepare() { throw new Error("Database must not be queried"); } },
+      HR_ADMIN_API_TOKEN: "correct-owner-token"
+    }
+  );
+  assert.equal(response.status, 401);
+});
+
+test("supplier comparison endpoint validates identifiers after owner authentication", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/sourcing/compare?destination=USA", "GET", undefined, {
+      authorization: "Bearer correct-owner-token"
+    }),
+    {
+      DB: {},
+      HR_ADMIN_API_TOKEN: "correct-owner-token"
+    }
+  );
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /product_id, variant_id/i);
+});
+
+test("supplier comparison is isolated behind an authenticated admin route and requires verified branded-neutral offers", () => {
+  assert.match(workerSource, /\/api\/admin\/sourcing\/compare/);
+  assert.match(workerSource, /Authorization/);
+  assert.match(workerSource, /PENDING_VERIFICATION/);
+  assert.match(workerSource, /supplier_branding_excluded = 1/);
+  assert.match(workerSource, /quality_score/);
+  assert.match(workerSource, /landed_cost_minor/);
+  assert.doesNotMatch(workerSource, /supplier_name\s*:/);
+});
