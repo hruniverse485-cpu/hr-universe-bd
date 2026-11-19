@@ -2503,7 +2503,8 @@ export default {
     if (path === "/api/admin/orders/cancel") return cancelPendingOrder(request, env);
 
     if (path === "/api/admin/orders/delivery") return manageBangladeshCodDelivery(request, env);
-    if (path === "/api/admin/inventory/verification") return manageInventoryVerification(request, env);\n    if (path === "/api/admin/orders/cod-ledger") return manageBangladeshCodLedger(request, env);
+    if (path === "/api/admin/inventory/verification") return manageInventoryVerification(request, env);
+    if (path === "/api/admin/orders/cod-ledger") return manageBangladeshCodLedger(request, env);
     if (path === "/api/admin/orders/returns") return manageBangladeshReturnInspections(request, env);
 
     if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
