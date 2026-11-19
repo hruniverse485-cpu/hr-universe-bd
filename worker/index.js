@@ -583,7 +583,9 @@ async function listProducts(request, env) {
           JOIN warehouses w ON w.id = i.warehouse_id
           WHERE pv.product_id = p.id AND pv.status = 'ACTIVE'
             AND w.country_code = co.country_code AND w.status = 'ACTIVE'
-            AND i.verified_at IS NOT NULL AND i.quantity > 0
+            AND i.verified_at IS NOT NULL
+            AND datetime(i.verified_at) >= datetime('now', ?)
+            AND i.quantity > 0
         )
         AND (
           ? = ''
@@ -594,9 +596,9 @@ async function listProducts(request, env) {
       ORDER BY p.created_at DESC
       LIMIT ?
     `).bind(
+      inventoryMaxAgeModifier,
       country,
       currency,
-      inventoryMaxAgeModifier,
       inventoryMaxAgeModifier,
       q,
       q,
