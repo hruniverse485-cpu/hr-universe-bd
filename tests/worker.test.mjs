@@ -468,3 +468,14 @@ test("order request fingerprint is stored with newly created orders", () => {
   assert.match(workerSource, /requestFingerprint/);
   assert.match(workerSource, /This Idempotency-Key was already used for a different order request/);
 });
+
+
+test("concurrent idempotency-key conflicts also compare the original request fingerprint", () => {
+  const conflictStart = workerSource.indexOf('if (databaseMessage');
+  const conflictEnd = workerSource.indexOf('throw error;', conflictStart);
+  assert.ok(conflictStart >= 0 && conflictEnd > conflictStart);
+  const conflictHandler = workerSource.slice(conflictStart, conflictEnd);
+  assert.match(conflictHandler, /idempotency_request_hash/);
+  assert.match(conflictHandler, /constantTimeEqual\(existing\.idempotency_request_hash, requestFingerprint\)/);
+  assert.match(conflictHandler, /different order request/);
+});
