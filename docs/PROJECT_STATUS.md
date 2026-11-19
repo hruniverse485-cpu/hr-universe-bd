@@ -79,6 +79,14 @@ The owner retains control of banking, payment credentials, legal declarations, p
 At every work session, record the current branch/head commit, changed files, test results, unresolved defects, blockers, and the next exact action. Never report a feature as complete without implementation and verification evidence.
 
 
+## Catalog eligibility alignment and validation checkpoint (2026-11-20)
+
+- Product activation now requires a currently valid ACTIVE product-level (non-variant-specific) price. This matches the public product and category queries, which currently list only base product prices; a product with only a variant-specific price would otherwise activate but remain absent from the public catalog.
+- The owner catalog detail renderer was corrected and the dashboard inline script syntax is now validated by CI.
+- Inventory freshness upper-bound guards and the associated regression tests are included in this validated state.
+- GitHub Actions run `44601188999` completed successfully on commit `739b3a54daaf7ea571cb2cb91f7a93b71fa6036b`: Worker syntax check passed, all 117 Worker API tests passed, and ordered SQL migration validation passed.
+- No migration or production database changes were required. No deployment, paid service, or external action was performed.
+
 ## Inventory freshness upper-bound checkpoint (2026-11-20)
 
 - Product activation now rejects future-dated `inventory.verified_at` timestamps as well as timestamps older than the configured freshness window.
