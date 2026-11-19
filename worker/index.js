@@ -1943,6 +1943,152 @@ async function manageCourierPartners(request, env) {
 }
 
 
+async function manageBangladeshCodLedger(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner COD ledger access is not configured" }, 503);
+  const authorization = request.headers.get("Authorization") || "";
+  const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!constantTimeEqual(suppliedToken, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+
+  try {
+    if (request.method === "GET") {
+      const url = new URL(request.url);
+      const orderId = text(url.searchParams.get("order_id"), 100);
+      const status = text(url.searchParams.get("status"), 30).toUpperCase();
+      if (status && !["PENDING_REVIEW","VERIFIED","DISPUTED"].includes(status)) {
+        return json({ success: false, error: "Invalid ledger review status" }, 400);
+      }
+      const clauses = ["o.country_code = 'BD'", "o.currency_code = 'BDT'", "o.payment_method = 'COD'"];
+      const values = [];
+      if (orderId) { clauses.push("e.order_id = ?"); values.push(orderId); }
+      if (status) { clauses.push("e.status = ?"); values.push(status); }
+      const result = await env.DB.prepare(`SELECT e.id, e.order_id, e.entry_type, e.amount_minor,
+        e.currency_code, e.status, e.source_reference, e.evidence_reference, e.notes,
+        e.occurred_at, e.recorded_by, e.reviewed_by, e.reviewed_at, e.review_note, e.created_at
+        FROM cod_reconciliation_entries e JOIN orders o ON o.id = e.order_id
+        WHERE ${clauses.join(" AND ")}
+        ORDER BY e.occurred_at DESC, e.created_at DESC LIMIT 200`).bind(...values).all();
+      return json({ success: true, entries: result.results || [] });
+    }
+
+    let raw = await request.text();
+    if (raw.length > 6000) return json({ success: false, error: "Request too large" }, 413);
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "Invalid ledger request" }, 400);
+
+    if (request.method === "POST") {
+      const orderId = text(data.order_id, 100);
+      const entryType = text(data.entry_type, 40).toUpperCase();
+      const allowedTypes = ["CUSTOMER_COD_COLLECTED","COURIER_SETTLEMENT_RECEIVED","COURIER_FEE","RETURN_FEE","CUSTOMER_REFUND","ADJUSTMENT_IN","ADJUSTMENT_OUT"];
+      const amount = integer(data.amount_minor, 1, Number.MAX_SAFE_INTEGER);
+      const evidence = text(data.evidence_reference, 500);
+      const source = text(data.source_reference, 160) || null;
+      const notes = text(data.notes, 1000) || null;
+      const occurredAt = text(data.occurred_at, 40) || new Date().toISOString();
+      if (!orderId || !allowedTypes.includes(entryType) || amount === null || !evidence || !Number.isFinite(Date.parse(occurredAt))) {
+        return json({ success: false, error: "A valid order, entry type, positive BDT amount, evidence reference and occurrence date are required" }, 400);
+      }
+      const order = await env.DB.prepare(`SELECT id, country_code, currency_code, payment_method, delivery_status
+        FROM orders WHERE id = ?`).bind(orderId).first();
+      if (!order) return json({ success: false, error: "Order not found" }, 404);
+      if (order.country_code !== "BD" || order.currency_code !== "BDT" || order.payment_method !== "COD") {
+        return json({ success: false, error: "Only Bangladesh BDT COD orders can use this ledger" }, 409);
+      }
+      if (entryType === "CUSTOMER_COD_COLLECTED" && order.delivery_status !== "DELIVERED") {
+        return json({ success: false, error: "Record customer COD collection only after delivery is marked DELIVERED" }, 409);
+      }
+      const id = crypto.randomUUID();
+      await env.DB.prepare(`INSERT INTO cod_reconciliation_entries
+        (id, order_id, entry_type, amount_minor, currency_code, status, source_reference,
+         evidence_reference, notes, occurred_at, recorded_by)
+        VALUES (?, ?, ?, ?, 'BDT', 'PENDING_REVIEW', ?, ?, ?, ?, ?)`).bind(
+          id, orderId, entryType, amount, source, evidence, notes, occurredAt,
+          text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER"
+        ).run();
+      return json({ success: true, entry: { id, order_id: orderId, entry_type: entryType, amount_minor: amount, currency_code: "BDT", status: "PENDING_REVIEW" } }, 201);
+    }
+
+    if (request.method === "PATCH") {
+      const entryId = text(data.entry_id, 100);
+      const target = text(data.status, 30).toUpperCase();
+      const reviewNote = text(data.review_note, 1000) || null;
+      if (!entryId || !["VERIFIED","DISPUTED"].includes(target)) return json({ success: false, error: "entry_id and VERIFIED or DISPUTED status are required" }, 400);
+      const result = await env.DB.prepare(`UPDATE cod_reconciliation_entries
+        SET status = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, review_note = ?
+        WHERE id = ? AND status = 'PENDING_REVIEW'`).bind(
+          target, text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER", reviewNote, entryId
+        ).run();
+      if (!result.meta || result.meta.changes !== 1) return json({ success: false, error: "Entry not found or already reviewed; refresh and retry" }, 409);
+      return json({ success: true, entry_id: entryId, status: target });
+    }
+    return json({ success: false, error: "Method not allowed" }, 405);
+  } catch (error) {
+    console.error("Bangladesh COD ledger operation failed:", error);
+    return json({ success: false, error: "Unable to process COD ledger request" }, 500);
+  }
+}
+
+async function manageBangladeshReturnInspections(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner return inspection access is not configured" }, 503);
+  const authorization = request.headers.get("Authorization") || "";
+  const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!constantTimeEqual(suppliedToken, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+
+  try {
+    if (request.method === "GET") {
+      const url = new URL(request.url);
+      const orderId = text(url.searchParams.get("order_id"), 100);
+      const result = orderId
+        ? await env.DB.prepare(`SELECT i.* FROM order_return_inspections i
+            JOIN orders o ON o.id = i.order_id
+            WHERE i.order_id = ? AND o.country_code = 'BD' AND o.currency_code = 'BDT'
+              AND o.payment_method = 'COD' ORDER BY i.created_at DESC LIMIT 100`).bind(orderId).all()
+        : await env.DB.prepare(`SELECT i.* FROM order_return_inspections i
+            JOIN orders o ON o.id = i.order_id
+            WHERE o.country_code = 'BD' AND o.currency_code = 'BDT'
+              AND o.payment_method = 'COD' ORDER BY i.created_at DESC LIMIT 200`).all();
+      return json({ success: true, inspections: result.results || [] });
+    }
+    if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+    const raw = await request.text();
+    if (raw.length > 5000) return json({ success: false, error: "Request too large" }, 413);
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "Invalid return inspection" }, 400);
+    const orderId = text(data.order_id, 100);
+    const condition = text(data.parcel_condition, 30).toUpperCase();
+    const disposition = text(data.disposition, 30).toUpperCase();
+    const quantity = integer(data.inspected_quantity, 1, 10000);
+    const notes = text(data.notes, 2000);
+    const evidence = text(data.evidence_reference, 500) || null;
+    const conditions = ["SEALED_INTACT","OPENED_INTACT","DAMAGED","INCOMPLETE","WRONG_ITEM","MISSING"];
+    const dispositions = ["QUARANTINE","RESTOCK_CANDIDATE","RETURN_TO_SUPPLIER","DISPOSE","INVESTIGATE"];
+    if (!orderId || !conditions.includes(condition) || !dispositions.includes(disposition) || quantity === null || !notes) {
+      return json({ success: false, error: "Valid order, parcel condition, disposition, inspected quantity and notes are required" }, 400);
+    }
+    if (disposition === "RESTOCK_CANDIDATE" && !["SEALED_INTACT","OPENED_INTACT"].includes(condition)) {
+      return json({ success: false, error: "Damaged, incomplete, wrong or missing parcels cannot be marked as restock candidates" }, 409);
+    }
+    const order = await env.DB.prepare(`SELECT id, country_code, currency_code, payment_method, delivery_status
+      FROM orders WHERE id = ?`).bind(orderId).first();
+    if (!order) return json({ success: false, error: "Order not found" }, 404);
+    if (order.country_code !== "BD" || order.currency_code !== "BDT" || order.payment_method !== "COD" || order.delivery_status !== "RETURNED") {
+      return json({ success: false, error: "Return inspection is only available for returned Bangladesh BDT COD orders" }, 409);
+    }
+    const id = crypto.randomUUID();
+    await env.DB.prepare(`INSERT INTO order_return_inspections
+      (id, order_id, parcel_condition, disposition, inspected_quantity, notes, evidence_reference, inspected_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+        id, orderId, condition, disposition, quantity, notes, evidence,
+        text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER"
+      ).run();
+    return json({ success: true, inspection: { id, order_id: orderId, parcel_condition: condition, disposition, inspected_quantity: quantity, inventory_changed: false } }, 201);
+  } catch (error) {
+    console.error("Bangladesh return inspection failed:", error);
+    return json({ success: false, error: "Unable to process return inspection" }, 500);
+  }
+}
+
 async function manageBangladeshCodDelivery(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner delivery access is not configured" }, 503);
@@ -2138,6 +2284,8 @@ export default {
     if (path === "/api/admin/orders/cancel") return cancelPendingOrder(request, env);
 
     if (path === "/api/admin/orders/delivery") return manageBangladeshCodDelivery(request, env);
+    if (path === "/api/admin/orders/cod-ledger") return manageBangladeshCodLedger(request, env);
+    if (path === "/api/admin/orders/returns") return manageBangladeshReturnInspections(request, env);
 
     if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
 
