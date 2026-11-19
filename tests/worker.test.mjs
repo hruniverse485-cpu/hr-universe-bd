@@ -1436,6 +1436,31 @@ test("Courier settlement cannot exceed recorded customer COD collection", async 
   assert.match((await response.json()).error, /cannot exceed recorded customer COD collection/i);
 });
 
+test("Customer refund cannot exceed verified COD collection", async () => {
+  let insertSql = "";
+  const DB = {
+    prepare(sql) {
+      return { bind() {
+        if (sql.includes("SELECT id, country_code")) return { first: async () => ({
+          id: "order-bd", country_code: "BD", currency_code: "BDT",
+          payment_method: "COD", delivery_status: "DELIVERED", total_minor: 1000
+        }) };
+        insertSql = sql;
+        return { run: async () => ({ meta: { changes: 0 } }) };
+      } };
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/cod-ledger", "POST", JSON.stringify({
+    order_id: "order-bd", entry_type: "CUSTOMER_REFUND",
+    amount_minor: 200, evidence_reference: "refund receipt"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 409);
+  assert.ok(insertSql.includes("entry_type = 'CUSTOMER_REFUND'"));
+  assert.ok(insertSql.includes("status = 'VERIFIED'"));
+  assert.match((await response.json()).error, /refunds cannot exceed verified/i);
+});
 test("Customer COD collection cannot exceed order total", async () => {
   let insertSql = "";
   const DB = {
