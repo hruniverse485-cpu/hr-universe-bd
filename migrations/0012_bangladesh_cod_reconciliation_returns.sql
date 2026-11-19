@@ -46,6 +46,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_cod_ledger_source_reference
 ON cod_reconciliation_entries(order_id, entry_type, source_reference)
 WHERE source_reference IS NOT NULL AND length(trim(source_reference)) > 0;
 
+-- Prevent the same receipt/evidence item being entered twice for one order and event type.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cod_ledger_evidence_reference
+ON cod_reconciliation_entries(order_id, entry_type, evidence_reference)
+WHERE length(trim(evidence_reference)) > 0;
+
 CREATE TABLE IF NOT EXISTS order_return_inspections (
   id TEXT PRIMARY KEY,
   order_id TEXT NOT NULL,
