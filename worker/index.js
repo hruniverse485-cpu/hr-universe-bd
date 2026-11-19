@@ -1191,17 +1191,31 @@ async function createCodOrder(request, env) {
           .includes("unique")
       ) {
         const existing = await env.DB.prepare(`
-          SELECT id, status, created_at
+          SELECT id, status, created_at, idempotency_request_hash
           FROM orders
           WHERE idempotency_key = ?
         `).bind(idempotencyKey).first();
 
         if (existing) {
+          if (
+            !existing.idempotency_request_hash ||
+            !constantTimeEqual(existing.idempotency_request_hash, requestFingerprint)
+          ) {
+            return json({
+              success: false,
+              error: "This Idempotency-Key was already used for a different order request. Use a new key."
+            }, 409);
+          }
+
           return json({
             success: true,
             duplicate: true,
             message: "This order request was already received",
-            order: existing
+            order: {
+              id: existing.id,
+              status: existing.status,
+              created_at: existing.created_at
+            }
           });
         }
       }
