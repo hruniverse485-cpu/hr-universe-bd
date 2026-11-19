@@ -210,3 +210,49 @@ test("supplier comparison is isolated behind an authenticated admin route and re
   assert.match(workerSource, /quality_score/);
   assert.match(workerSource, /landed_cost_minor/);
 });
+
+
+test("supplier offer management requires configured owner token", async () => {
+  const response = await worker.fetch(request("/api/admin/sourcing/offers", "POST", "{}", {
+    "content-type": "application/json"
+  }), { DB: {}, HR_ADMIN_API_TOKEN: "" });
+  assert.equal(response.status, 503);
+});
+
+test("supplier offer management rejects unauthorized requests before database access", async () => {
+  const response = await worker.fetch(request("/api/admin/sourcing/offers", "POST", "{}", {
+    authorization: "Bearer wrong"
+  }), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 401);
+});
+
+test("supplier offer management rejects unsupported methods after authentication", async () => {
+  const response = await worker.fetch(request("/api/admin/sourcing/offers", "GET", undefined, {
+    authorization: "Bearer owner-secret"
+  }), { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" });
+  assert.equal(response.status, 405);
+});
+
+test("supplier offer management validates operation before database access", async () => {
+  const response = await worker.fetch(request("/api/admin/sourcing/offers", "POST", JSON.stringify({
+    operation: "unknown"
+  }), {
+    authorization: "Bearer owner-secret",
+    "content-type": "application/json"
+  }), {
+    DB: {},
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 400);
+});
+
+test("supplier offer management enforces approval evidence gates and immutable identity", () => {
+  assert.match(workerSource, /Offer identity is immutable/);
+  assert.match(workerSource, /Pause an ACTIVE offer before editing it/);
+  assert.match(workerSource, /confirmed supplier-branding-free packaging/);
+  assert.match(workerSource, /supplier_offer_audit/);
+  assert.match(workerSource, /\/api\/admin\/sourcing\/offers/);
+});
