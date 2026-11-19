@@ -1341,10 +1341,34 @@ test("Returned parcel inspection is evidence-only and never changes inventory", 
   const payload = await response.json();
   assert.equal(response.status, 201);
   assert.equal(payload.inspection.inventory_changed, false);
-  assert.match(calls[2].sql, /INSERT INTO order_return_inspections/);
+  assert.match(calls[1].sql, /INSERT INTO order_return_inspections/);
   assert.equal(calls.some((call) => /UPDATE inventory|INSERT INTO inventory/.test(call.sql)), false);
 });
 
+test("Return inspection quantity cap is enforced atomically by the insert", async () => {
+  let insertSql = "";
+  const DB = {
+    prepare(sql) {
+      return { bind() {
+        if (sql.includes("SELECT o.id")) return { first: async () => ({
+          id: "order-return", country_code: "BD", currency_code: "BDT",
+          payment_method: "COD", delivery_status: "RETURNED", ordered_quantity: 1
+        }) };
+        insertSql = sql;
+        return { run: async () => ({ meta: { changes: 0 } }) };
+      } };
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/returns", "POST", JSON.stringify({
+    order_id: "order-return", parcel_condition: "SEALED_INTACT",
+    disposition: "RESTOCK_CANDIDATE", inspected_quantity: 1, notes: "Second inspection"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 409);
+  assert.match(insertSql, /SUM\\(inspected_quantity\\)/);
+  assert.match(insertSql, /SUM\\(oi\\.quantity\\)/);
+});
 test("Damaged returned parcels cannot be marked as restock candidates", async () => {
   const DB = {
     prepare() {
@@ -1376,6 +1400,7 @@ test("COD ledger review records a human verification state", async () => {
   assert.equal(response.status, 200);
   assert.match(updateSql, /status = 'PENDING_REVIEW'/);
   assert.match(updateSql, /reviewed_at = CURRENT_TIMESTAMP/);
+  assert.match(updateSql, /o.country_code = 'BD'/);
 });
 
 test("Courier settlement cannot exceed recorded customer COD collection", async () => {
