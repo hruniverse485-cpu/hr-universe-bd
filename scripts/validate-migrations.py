@@ -218,6 +218,7 @@ try:
     db.execute("INSERT INTO products (id, category_id, name, slug, status) VALUES ('stale-prod', 'cat', 'Stale stock product', 'stale-stock-product', 'ACTIVE')")
     db.execute("INSERT INTO product_variants (id, product_id, sku, status) VALUES ('stale-var', 'stale-prod', 'STALE-1', 'ACTIVE')")
     db.execute("INSERT INTO inventory (id, warehouse_id, product_id, variant_id, quantity, verified_at) VALUES ('inv-stale', 'wh', 'stale-prod', 'stale-var', 4, datetime('now', '-73 hours'))")
+    db.commit()
     insert_order("order-stale")
     try:
         with db:
@@ -240,6 +241,7 @@ try:
     db.execute("INSERT INTO products (id, category_id, name, slug, status) VALUES ('future-prod', 'cat', 'Future stock product', 'future-stock-product', 'ACTIVE')")
     db.execute("INSERT INTO product_variants (id, product_id, sku, status) VALUES ('future-var', 'future-prod', 'FUTURE-1', 'ACTIVE')")
     db.execute("INSERT INTO inventory (id, warehouse_id, product_id, variant_id, quantity, verified_at) VALUES ('inv-future', 'wh', 'future-prod', 'future-var', 4, datetime('now', '+1 hour'))")
+    db.commit()
     insert_order("order-future")
     try:
         with db:
