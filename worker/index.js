@@ -2081,8 +2081,8 @@ async function manageCatalogAdmin(request, env) {
       const before=await env.DB.prepare("SELECT * FROM product_prices WHERE id=?").bind(id).first();
       if(!before)return json({success:false,error:"Price not found"},404);
       if(status==="ACTIVE"){
-        const eligible=await env.DB.prepare("SELECT 1 AS ok FROM products p JOIN categories c ON c.id=p.category_id AND c.is_active=1 JOIN countries co ON co.country_code=? AND co.currency_code=? AND co.is_active=1 JOIN currencies cu ON cu.code=? AND cu.is_active=1 WHERE p.id=? AND p.status<>'ARCHIVED' AND (? IS NULL OR EXISTS (SELECT 1 FROM product_variants v WHERE v.id=? AND v.product_id=p.id AND v.status='ACTIVE')) AND (? IS NULL OR datetime(?)<=datetime('now')) AND (? IS NULL OR datetime(?)>datetime('now'))")
-          .bind(before.country_code,before.currency_code,before.currency_code,before.product_id,before.variant_id,before.variant_id,before.valid_from,before.valid_from,before.valid_until,before.valid_until).first();
+        const eligible=await env.DB.prepare("SELECT 1 AS ok FROM product_prices pp JOIN products p ON p.id=pp.product_id JOIN categories c ON c.id=p.category_id AND c.is_active=1 JOIN countries co ON co.country_code=pp.country_code AND co.currency_code=pp.currency_code AND co.is_active=1 JOIN currencies cu ON cu.code=pp.currency_code AND cu.is_active=1 WHERE pp.id=? AND p.status<>'ARCHIVED' AND (pp.variant_id IS NULL OR EXISTS (SELECT 1 FROM product_variants v WHERE v.id=pp.variant_id AND v.product_id=p.id AND v.status='ACTIVE')) AND (pp.valid_from IS NULL OR datetime(pp.valid_from)<=datetime('now')) AND (pp.valid_until IS NULL OR datetime(pp.valid_until)>datetime('now'))")
+          .bind(id).first();
         if(!eligible)return json({success:false,error:"Product category, market, variant or price validity is not eligible"},409);
       }
       const mutation=env.DB.prepare("UPDATE product_prices SET status=? WHERE id=? AND status=?").bind(status,id,before.status);
