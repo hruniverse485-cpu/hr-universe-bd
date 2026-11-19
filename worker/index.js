@@ -1317,6 +1317,85 @@ async function createCodOrder(request, env) {
 }
 
 
+async function manageCourierRates(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const courierId = text(url.searchParams.get("courier_id"), 100);
+    try {
+      let query = `SELECT r.id, r.courier_id, c.partner_name, r.rate_name, r.origin_zone,
+        r.destination_district, r.destination_area, r.service_type, r.weight_from_grams,
+        r.weight_to_grams, r.base_fee_minor, r.cod_fee_minor, r.return_fee_minor,
+        r.remote_area_fee_minor, r.currency_code, r.estimated_min_days, r.estimated_max_days,
+        r.pickup_cutoff_local, r.effective_from, r.effective_until, r.verification_status,
+        r.evidence_reference, r.verified_at, r.created_at
+        FROM courier_rate_cards r JOIN courier_partners c ON c.id = r.courier_id`;
+      const values = [];
+      if (courierId) { query += " WHERE r.courier_id = ?"; values.push(courierId); }
+      query += " ORDER BY r.created_at DESC LIMIT 200";
+      const result = await env.DB.prepare(query).bind(...values).all();
+      return json({ success: true, rate_cards: result.results || [] });
+    } catch (error) {
+      console.error("Courier rate listing failed:", error);
+      return json({ success: false, error: "Unable to load courier rates" }, 500);
+    }
+  }
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 10000) return json({ success: false, error: "Request body is too large" }, 413);
+    data = JSON.parse(raw);
+  } catch { return json({ success: false, error: "Invalid JSON body" }, 400); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "A JSON object is required" }, 400);
+  const courierId = text(data.courier_id, 100);
+  const rateName = text(data.rate_name, 160);
+  const serviceType = text(data.service_type, 20).toUpperCase() || "STANDARD";
+  const currencyCode = text(data.currency_code, 3).toUpperCase() || "BDT";
+  const weightFrom = Number(data.weight_from_grams ?? 0);
+  const weightTo = data.weight_to_grams === "" || data.weight_to_grams == null ? null : Number(data.weight_to_grams);
+  const baseFee = Number(data.base_fee_minor);
+  const codFee = Number(data.cod_fee_minor ?? 0);
+  const returnFee = Number(data.return_fee_minor ?? 0);
+  const remoteFee = Number(data.remote_area_fee_minor ?? 0);
+  const minDays = data.estimated_min_days === "" || data.estimated_min_days == null ? null : Number(data.estimated_min_days);
+  const maxDays = data.estimated_max_days === "" || data.estimated_max_days == null ? null : Number(data.estimated_max_days);
+  const allowed = ["STANDARD","EXPRESS","SAME_DAY","PICKUP_ONLY","RETURN_ONLY"];
+  const integers = [weightFrom, baseFee, codFee, returnFee, remoteFee, ...(weightTo === null ? [] : [weightTo]), ...(minDays === null ? [] : [minDays]), ...(maxDays === null ? [] : [maxDays])];
+  if (!courierId || !rateName || !allowed.includes(serviceType) || integers.some(n => !Number.isSafeInteger(n) || n < 0) ||
+      (weightTo !== null && weightTo < weightFrom) || (minDays !== null && maxDays !== null && minDays > maxDays)) {
+    return json({ success: false, error: "Courier, rate name, valid service type, non-negative integer fees/weights and valid delivery range are required" }, 400);
+  }
+  const courier = await env.DB.prepare("SELECT id FROM courier_partners WHERE id = ?").bind(courierId).first();
+  if (!courier) return json({ success: false, error: "Courier partner was not found" }, 404);
+  const currency = await env.DB.prepare("SELECT code FROM currencies WHERE code = ?").bind(currencyCode).first();
+  if (!currency) return json({ success: false, error: "Currency code is not configured" }, 400);
+  const id = crypto.randomUUID();
+  try {
+    await env.DB.prepare(`INSERT INTO courier_rate_cards (
+      id, courier_id, rate_name, origin_zone, destination_district, destination_area,
+      service_type, weight_from_grams, weight_to_grams, base_fee_minor, cod_fee_minor,
+      return_fee_minor, remote_area_fee_minor, currency_code, estimated_min_days,
+      estimated_max_days, pickup_cutoff_local, effective_from, effective_until,
+      verification_status, evidence_reference, verified_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'UNVERIFIED', ?, NULL)`)
+      .bind(id, courierId, rateName, text(data.origin_zone, 120) || null,
+        text(data.destination_district, 120) || null, text(data.destination_area, 120) || null,
+        serviceType, weightFrom, weightTo, baseFee, codFee, returnFee, remoteFee, currencyCode,
+        minDays, maxDays, text(data.pickup_cutoff_local, 20) || null,
+        text(data.effective_from, 40) || null, text(data.effective_until, 40) || null,
+        text(data.evidence_reference, 500) || null).run();
+    return json({ success: true, message: "Rate card saved as UNVERIFIED. It cannot be used for automatic courier selection until separately reviewed.", rate_card: { id, courier_id: courierId, verification_status: "UNVERIFIED" } }, 201);
+  } catch (error) {
+    console.error("Courier rate save failed:", error);
+    return json({ success: false, error: "Unable to save courier rate card" }, 500);
+  }
+}
+
 async function listLocalSuppliers(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
@@ -1618,6 +1697,8 @@ export default {
     if (path === "/api/admin/partners/contacts") return managePartnerContacts(request, env);
 
     if (path === "/api/admin/partners/suppliers") return listLocalSuppliers(request, env);
+
+    if (path === "/api/admin/partners/courier-rates") return manageCourierRates(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
       if (request.method !== "GET") {
