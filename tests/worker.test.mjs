@@ -1459,6 +1459,13 @@ test("Catalog dashboard script is valid and does not persist owner credentials",
   assert.match(html,/data-variant-edit=/);
   assert.match(html,/id:d\.id\|\|undefined/);
   assert.match(html,/cancelVariantEdit/);
+  assert.match(html,/id="cancelCategoryEdit"/);
+  assert.match(html,/data-category-edit=/);
+  assert.match(html,/function resetCategoryForm\(\)/);
+  assert.match(html,/f\.elements\.id\.value=item\.id/);
+  assert.match(html,/operation:"save_category",\.\.\.d/);
+  assert.match(html,/Category updated\./);
+
 });
 
 test("Inventory verification requires owner authentication", async () => {
