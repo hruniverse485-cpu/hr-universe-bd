@@ -208,3 +208,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - CI run [#108](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44538068667) passed Worker syntax, all 42 Node tests, and the complete ordered migration validator including reservation/cancellation triggers and migration 0009 idempotency schema checks.
 - These are mocked-D1 request-path tests plus real SQLite migration/trigger tests. They still do not replace live Cloudflare D1 integration, simultaneous network requests, or production load tests.
 - No live D1 changes, deployments, payments, supplier orders, or changes to `main`.
+
+## Owner-protected pending-order cancellation (2026-11-19)
+
+- Added `POST /api/admin/orders/cancel`, protected by the existing `HR_ADMIN_API_TOKEN` Worker secret.
+- The initial cancellation workflow accepts only an existing `PENDING` order. Confirmed/processing orders are rejected with HTTP 409 so the system does not claim to cancel an order that may already be in fulfilment.
+- The status update is conditional (`WHERE id = ? AND status = 'PENDING'`) to prevent a stale admin screen from overwriting a concurrent status change. Repeated cancellation is idempotently reported as already cancelled.
+- Migration 0006's database trigger releases the reserved local inventory exactly once when the order transitions to `CANCELLED`; the Worker does not manually add stock and therefore avoids double release.
+- Added route tests for missing/incorrect owner authentication, successful pending cancellation, refusal of confirmed orders, and invalid order identifiers.
+- GitHub Actions run [#111](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44546803301) passed: Worker syntax, Node API tests, and all ordered SQL migration validation.
+- This is a Feature-branch code/test milestone only. It has not been deployed; no production database was changed. Customer self-service cancellation, confirmed-order exceptions, supplier cancellation, and refund handling remain unimplemented.
