@@ -58,6 +58,83 @@ try:
     if missing_columns:
         fail("Missing order columns: " + ", ".join(missing_columns))
 
+    # Exercise the actual reservation/release triggers on disposable SQLite.
+    db.execute("INSERT INTO countries (id, country_code, country_name, currency_code, is_active) VALUES ('c-bd', 'BD', 'Bangladesh', 'BDT', 1)")
+    db.execute("INSERT INTO currencies (code, currency_name, symbol, decimal_places, is_active) VALUES ('BDT', 'Taka', '৳', 0, 1)")
+    db.execute("INSERT INTO categories (id, name, slug, is_active) VALUES ('cat', 'Test', 'test', 1)")
+    db.execute("INSERT INTO products (id, category_id, name, slug, status) VALUES ('prod', 'cat', 'Test product', 'test-product', 'ACTIVE')")
+    db.execute("INSERT INTO product_variants (id, product_id, sku, status) VALUES ('var', 'prod', 'TEST-1', 'ACTIVE')")
+    db.execute("INSERT INTO warehouses (id, warehouse_name, country_code, status) VALUES ('wh', 'BD Warehouse', 'BD', 'ACTIVE')")
+    db.execute("INSERT INTO inventory (id, warehouse_id, product_id, variant_id, quantity, verified_at) VALUES ('inv', 'wh', 'prod', 'var', 5, CURRENT_TIMESTAMP)")
+
+    def insert_order(order_id: str) -> None:
+        db.execute(
+            """INSERT INTO orders (
+                id, product_id, product_name, unit_price, quantity, total,
+                payment_method, customer_name, customer_phone, customer_address,
+                district, status, created_at
+            ) VALUES (?, 'prod', 'Test product', 10, 1, 10, 'COD',
+                      'Test Customer', '01000000000', 'Test address',
+                      'Dhaka', 'PENDING', CURRENT_TIMESTAMP)""",
+            (order_id,),
+        )
+
+    insert_order("order-a")
+    db.execute(
+        """INSERT INTO order_items (
+            id, order_id, product_id, variant_id, product_name_snapshot,
+            unit_price_minor, currency_code, quantity, line_total_minor,
+            fulfillment_type
+        ) VALUES ('item-a1', 'order-a', 'prod', 'var', 'Test product',
+                  1000, 'BDT', 2, 2000, 'LOCAL_WAREHOUSE')"""
+    )
+    db.execute(
+        """INSERT INTO order_items (
+            id, order_id, product_id, variant_id, product_name_snapshot,
+            unit_price_minor, currency_code, quantity, line_total_minor,
+            fulfillment_type
+        ) VALUES ('item-a2', 'order-a', 'prod', 'var', 'Test product',
+                  1000, 'BDT', 1, 1000, 'LOCAL_WAREHOUSE')"""
+    )
+    remaining = db.execute("SELECT quantity FROM inventory WHERE id='inv'").fetchone()[0]
+    if remaining != 2:
+        fail(f"Reservation trigger expected 2 units remaining, got {remaining}")
+    reservation_count = db.execute(
+        "SELECT COUNT(*) FROM inventory_reservations WHERE order_id='order-a' AND status='RESERVED'"
+    ).fetchone()[0]
+    if reservation_count != 2:
+        fail(f"Expected two reservation ledger rows, got {reservation_count}")
+
+    insert_order("order-b")
+    try:
+        with db:
+            db.execute(
+                """INSERT INTO order_items (
+                    id, order_id, product_id, variant_id, product_name_snapshot,
+                    unit_price_minor, currency_code, quantity, line_total_minor,
+                    fulfillment_type
+                ) VALUES ('item-b1', 'order-b', 'prod', 'var', 'Test product',
+                          1000, 'BDT', 3, 3000, 'LOCAL_WAREHOUSE')"""
+            )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        fail("Insufficient stock did not abort the reservation")
+    if db.execute("SELECT quantity FROM inventory WHERE id='inv'").fetchone()[0] != 2:
+        fail("Failed reservation changed available inventory")
+
+    db.execute("UPDATE orders SET status='CANCELLED' WHERE id='order-a'")
+    restored = db.execute("SELECT quantity FROM inventory WHERE id='inv'").fetchone()[0]
+    if restored != 5:
+        fail(f"Cancellation should restore 3 units, got inventory={restored}")
+    db.execute("UPDATE orders SET status='REJECTED' WHERE id='order-a'")
+    if db.execute("SELECT quantity FROM inventory WHERE id='inv'").fetchone()[0] != 5:
+        fail("Repeated terminal status change restored inventory twice")
+    if db.execute(
+        "SELECT COUNT(*) FROM inventory_reservations WHERE order_id='order-a' AND status='RELEASED'"
+    ).fetchone()[0] != 2:
+        fail("Cancellation did not release all reservation ledger rows")
+
     violations = db.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
         fail(f"Foreign key violations: {violations[:5]}")
