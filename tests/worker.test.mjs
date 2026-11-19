@@ -891,3 +891,30 @@ test("partner contact directory rejects unsupported methods", async () => {
   );
   assert.equal(response.status, 405);
 });
+
+
+test("local supplier directory requires owner authentication", async () => {
+  const response = await worker.fetch(request("/api/admin/partners/suppliers"), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 401);
+});
+
+test("local supplier directory returns supplier records and rejects writes", async () => {
+  let sql = "";
+  const DB = { prepare(value) { sql = value; return { bind() { return { all: async () => ({ results: [{ id: "s-1", supplier_name: "Local Supplier", verification_status: "UNVERIFIED" }] }) }; } }; } };
+  const response = await worker.fetch(
+    request("/api/admin/partners/suppliers?q=local", "GET", undefined, { authorization: "Bearer owner-secret" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.suppliers[0].id, "s-1");
+  assert.ok(sql.includes("LEFT JOIN supplier_local_profiles"));
+  const denied = await worker.fetch(
+    request("/api/admin/partners/suppliers", "POST", "{}", { authorization: "Bearer owner-secret" }),
+    { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(denied.status, 405);
+});
