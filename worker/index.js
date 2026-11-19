@@ -2067,7 +2067,12 @@ async function manageBangladeshCodLedger(request, env) {
       if (!entryId || !["VERIFIED","DISPUTED"].includes(target)) return json({ success: false, error: "entry_id and VERIFIED or DISPUTED status are required" }, 400);
       const result = await env.DB.prepare(`UPDATE cod_reconciliation_entries
         SET status = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, review_note = ?
-        WHERE id = ? AND status = 'PENDING_REVIEW'`).bind(
+        WHERE id = ? AND status = 'PENDING_REVIEW'
+          AND EXISTS (
+            SELECT 1 FROM orders o
+            WHERE o.id = cod_reconciliation_entries.order_id
+              AND o.country_code = 'BD' AND o.currency_code = 'BDT' AND o.payment_method = 'COD'
+          )`).bind(
           target, text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER", reviewNote, entryId
         ).run();
       if (!result.meta || result.meta.changes !== 1) return json({ success: false, error: "Entry not found or already reviewed; refresh and retry" }, 409);
@@ -2133,18 +2138,28 @@ async function manageBangladeshReturnInspections(request, env) {
     if (order.country_code !== "BD" || order.currency_code !== "BDT" || order.payment_method !== "COD" || order.delivery_status !== "RETURNED") {
       return json({ success: false, error: "Return inspection is only available for returned Bangladesh BDT COD orders" }, 409);
     }
-    const priorInspections = await env.DB.prepare(`SELECT COALESCE(SUM(inspected_quantity), 0) AS quantity
-      FROM order_return_inspections WHERE order_id = ?`).bind(orderId).first();
-    if (quantity + Number(priorInspections?.quantity || 0) > Number(order.ordered_quantity || 0)) {
-      return json({ success: false, error: "Cumulative inspected quantity cannot exceed the order quantity" }, 409);
-    }
     const id = crypto.randomUUID();
-    await env.DB.prepare(`INSERT INTO order_return_inspections
+    // Enforce cumulative inspected quantity in the INSERT itself. A separate
+    // read-then-write check could be bypassed by simultaneous operator requests.
+    const inserted = await env.DB.prepare(`INSERT INTO order_return_inspections
       (id, order_id, parcel_condition, disposition, inspected_quantity, notes, evidence_reference, inspected_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-        id, orderId, condition, disposition, quantity, notes, evidence,
-        text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER"
-      ).run();
+      SELECT ?, o.id, ?, ?, ?, ?, ?, ?
+      FROM orders o
+      WHERE o.id = ? AND o.country_code = 'BD' AND o.currency_code = 'BDT'
+        AND o.payment_method = 'COD' AND o.delivery_status = 'RETURNED'
+        AND ? + COALESCE((
+          SELECT SUM(inspected_quantity) FROM order_return_inspections
+          WHERE order_id = o.id
+        ), 0) <= COALESCE((
+          SELECT SUM(oi.quantity) FROM order_items oi WHERE oi.order_id = o.id
+        ), o.quantity, 0)
+    `).bind(
+      id, condition, disposition, quantity, notes, evidence,
+      text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER", orderId, quantity
+    ).run();
+    if (!inserted.meta || inserted.meta.changes !== 1) {
+      return json({ success: false, error: "Cumulative inspected quantity cannot exceed the order quantity; refresh and verify the returned order" }, 409);
+    }
     return json({ success: true, inspection: { id, order_id: orderId, parcel_condition: condition, disposition, inspected_quantity: quantity, inventory_changed: false } }, 201);
   } catch (error) {
     console.error("Bangladesh return inspection failed:", error);
