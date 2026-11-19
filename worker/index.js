@@ -1495,7 +1495,9 @@ export default {
 
     if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
 
-    if (path === "/api/admin/partners/couriers") return manageCourierPartners(request, env);\n\n    if (path === "/api/admin/partners/interactions") return managePartnerInteractions(request, env);
+    if (path === "/api/admin/partners/couriers") return manageCourierPartners(request, env);
+
+    if (path === "/api/admin/partners/interactions") return managePartnerInteractions(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
       if (request.method !== "GET") {
