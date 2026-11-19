@@ -596,6 +596,71 @@ async function listProducts(request, env) {
   }
 }
 
+async function cancelPendingOrder(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner order access is not configured" }, 503);
+
+  const authorization = request.headers.get("Authorization") || "";
+  const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!constantTimeEqual(suppliedToken, env.HR_ADMIN_API_TOKEN)) {
+    return json({ success: false, error: "Unauthorized" }, 401);
+  }
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 2000) return json({ success: false, error: "Request too large" }, 413);
+    data = JSON.parse(raw);
+  } catch {
+    return json({ success: false, error: "Invalid JSON request" }, 400);
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return json({ success: false, error: "Invalid cancellation request" }, 400);
+  }
+  const orderId = text(data.order_id, 100);
+  if (!orderId) return json({ success: false, error: "order_id is required" }, 400);
+
+  try {
+    const existing = await env.DB.prepare(
+      "SELECT id, status FROM orders WHERE id = ?"
+    ).bind(orderId).first();
+    if (!existing) return json({ success: false, error: "Order not found" }, 404);
+    if (existing.status === "CANCELLED") {
+      return json({ success: true, already_cancelled: true, order: { id: existing.id, status: existing.status } });
+    }
+    // Only pending orders can be cancelled through this initial safe workflow.
+    // Confirmed/processing orders need a separate fulfilment-aware exception path.
+    if (existing.status !== "PENDING") {
+      return json({ success: false, error: "Only PENDING orders can be cancelled through this workflow", status: existing.status }, 409);
+    }
+
+    const result = await env.DB.prepare(
+      "UPDATE orders SET status = 'CANCELLED' WHERE id = ? AND status = 'PENDING'"
+    ).bind(orderId).run();
+    if (!result.meta || result.meta.changes !== 1) {
+      const latest = await env.DB.prepare(
+        "SELECT id, status FROM orders WHERE id = ?"
+      ).bind(orderId).first();
+      if (latest && latest.status === "CANCELLED") {
+        return json({ success: true, already_cancelled: true, order: { id: latest.id, status: latest.status } });
+      }
+      return json({ success: false, error: "Order status changed; refresh before retrying", status: latest?.status || null }, 409);
+    }
+
+    // Migration 0006 releases reserved stock in its AFTER UPDATE trigger.
+    return json({
+      success: true,
+      message: "Pending order cancelled; reserved local stock was released by the database trigger.",
+      order: { id: orderId, status: "CANCELLED" },
+      inventory_release: "DATABASE_TRIGGER"
+    });
+  } catch (error) {
+    console.error("Pending order cancellation failed:", error);
+    return json({ success: false, error: "Unable to cancel this order" }, 500);
+  }
+}
+
 async function createCodOrder(request, env) {
   if (!env.DB) {
     return json({
@@ -1266,6 +1331,8 @@ export default {
 
       return health(env);
     }
+
+    if (path === "/api/admin/orders/cancel") return cancelPendingOrder(request, env);
 
     if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
 
