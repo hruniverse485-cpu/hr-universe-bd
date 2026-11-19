@@ -1371,6 +1371,22 @@ test("Catalog rejects invalid price and never activates it during creation", asy
   assert.equal(response.status,400);
 });
 
+test("Catalog category hierarchy rejects circular parent assignment", async () => {
+  let batchCalled=false;
+  const DB={prepare(sql){return{bind(...values){return{first:async()=>{
+    if(sql.includes("SELECT id FROM categories WHERE id=?"))return{id:values[0]};
+    if(sql.includes("SELECT * FROM categories WHERE id=?"))return{id:"cat-a",is_active:0,parent_id:null};
+    if(sql.includes("WITH RECURSIVE descendants"))return{cycle:1};
+    return null;
+  }};}};},batch:async()=>{batchCalled=true;return[];}};
+  const response=await worker.fetch(request("/api/admin/catalog","POST",JSON.stringify({
+    operation:"save_category",id:"cat-a",name:"Category A",slug:"category-a",parent_id:"cat-b",sort_order:0
+  }),{authorization:"Bearer owner-secret","content-type":"application/json"}),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  assert.equal(response.status,409);
+  assert.match((await response.json()).error,/hierarchy cycle/);
+  assert.equal(batchCalled,false);
+});
+
 test("Catalog product activation is blocked without verified market stock and active price", async () => {
   const calls=[];
   const DB={prepare(sql){return{bind(...values){calls.push({sql,values});return{first:async()=>sql.includes("SELECT * FROM products")?{id:"p1",status:"DRAFT",category_id:"cat"}:null};}};}};
