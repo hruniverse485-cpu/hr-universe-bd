@@ -1274,7 +1274,7 @@ test("Bangladesh COD ledger is owner-only and records financial evidence pending
         bind(...values) {
           calls.push({ sql, values });
           return {
-            first: async () => order,
+            first: async () => sql.includes("SUM(amount_minor)") ? { amount: 0 } : order,
             run: async () => ({ meta: { changes: 1 } }),
             all: async () => ({ results: [] })
           };
@@ -1294,7 +1294,7 @@ test("Bangladesh COD ledger is owner-only and records financial evidence pending
   assert.equal(response.status, 201);
   assert.equal(payload.entry.status, "PENDING_REVIEW");
   assert.equal(payload.entry.amount_minor, 25000);
-  assert.match(calls[1].sql, /INSERT INTO cod_reconciliation_entries/);
+  assert.match(calls[2].sql, /INSERT INTO cod_reconciliation_entries/);
   assert.match(calls[1].sql, /'PENDING_REVIEW'/);
 });
 
@@ -1322,7 +1322,9 @@ test("Returned parcel inspection is evidence-only and never changes inventory", 
         bind(...values) {
           calls.push({ sql, values });
           return {
-            first: async () => ({ id: "order-return", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "RETURNED", ordered_quantity: 1 }),
+            first: async () => sql.includes("SUM(inspected_quantity)")
+              ? { quantity: 0 }
+              : { id: "order-return", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "RETURNED", ordered_quantity: 1 },
             run: async () => ({ meta: { changes: 1 } })
           };
         }
@@ -1339,7 +1341,7 @@ test("Returned parcel inspection is evidence-only and never changes inventory", 
   const payload = await response.json();
   assert.equal(response.status, 201);
   assert.equal(payload.inspection.inventory_changed, false);
-  assert.match(calls[1].sql, /INSERT INTO order_return_inspections/);
+  assert.match(calls[2].sql, /INSERT INTO order_return_inspections/);
   assert.equal(calls.some((call) => /UPDATE inventory|INSERT INTO inventory/.test(call.sql)), false);
 });
 
