@@ -281,3 +281,14 @@ At every work session, record the current branch/head commit, changed files, tes
 
 - Added `docs/PRODUCT_IMAGE_STORAGE_DESIGN.md` after confirming the Worker currently has no R2 binding. The design specifies owner-only uploads, strict file-signature validation, opaque keys, private image delivery, approval gating, atomic audit, and release tests.
 - Upload implementation is intentionally blocked until the existing `product_images` schema and a non-production R2 bucket/binding can be verified. No fake binding, production resource, or deployment was created.
+
+
+## Zero-upfront setup and continuation checkpoint (2026-11-20)
+
+- Reconfirmed the active development branch is `feature/global-hybrid-rebuild`; all work remains isolated from `main` and `backup/pre-global-rebuild`.
+- Reconciled the technology/cost register with the current Feature-branch implementation: the storefront is API-backed for BD/BDT discovery, while customer checkout remains intentionally unavailable.
+- Recorded the owner's no-deposit/no-upfront-payment rule. No paid plan, supplier deposit, sample purchase, API usage charge, production resource, deployment, or production migration may be initiated without explicit approval.
+- The HR UNIVERSE CJ account must be separate and must not affect the existing account associated with Shafiq bhai. CJ authorization and API credentials remain owner-controlled and are not yet configured.
+- Product image upload remains blocked on purpose: no R2 binding or bucket has been confirmed. The documented private-storage design remains the implementation specification; do not show fabricated image-upload success or expose unverified external image URLs.
+- Updated `docs/TECHNOLOGY_COST_AUTOMATION_REGISTER.md` to remove the stale claim that the current storefront is still a demo/legacy storefront and to document the no-upfront-cost gate.
+- This checkpoint is documentation-only. No runtime code, production data, Cloudflare resources, or live supplier accounts were changed. CI status for this documentation commit has not yet been confirmed.
