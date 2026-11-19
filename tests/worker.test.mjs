@@ -1284,6 +1284,69 @@ test("Bangladesh delivery dashboard JavaScript parses and does not persist owner
 });
 
 
+test("Inventory verification requires owner authentication", async () => {
+  let touched = false;
+  const response = await worker.fetch(request("/api/admin/inventory/verification"), {
+    DB: { prepare() { touched = true; throw new Error("Database must not be queried"); } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 401);
+  assert.equal(touched, false);
+});
+
+test("Inventory verification converts physical count to available stock after reservations", async () => {
+  let batchStatements = [];
+  const DB = {
+    prepare(sql) {
+      return { bind(...values) { return {
+        first: async () => ({ id: "inventory-1", quantity: 4, verified_at: "2026-11-18T10:00:00.000Z", country_code: "BD", reserved_quantity: 3 }),
+        sql, values
+      }; } };
+    },
+    batch: async statements => { batchStatements = statements; return [{ meta: { changes: 1 } }, { meta: { changes: 1 } }]; }
+  };
+  const response = await worker.fetch(request("/api/admin/inventory/verification", "POST", JSON.stringify({
+    inventory_id: "inventory-1", physical_quantity: 10, evidence_reference: "count-sheet-2026-11-19"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret", HR_ADMIN_OWNER_LABEL: "OWNER"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.verification.reserved_quantity, 3);
+  assert.equal(payload.verification.available_quantity, 7);
+  assert.equal(batchStatements.length, 2);
+  assert.ok(batchStatements[0].sql.includes("UPDATE inventory"));
+  assert.ok(batchStatements[1].sql.includes("INSERT INTO inventory_verification_events"));
+  assert.ok(batchStatements[1].sql.includes("verification_token = ?"));
+});
+
+test("Inventory verification cannot reduce physical stock below active reservations", async () => {
+  let batchCalled = false;
+  const DB = {
+    prepare(sql) { return { bind() { return { first: async () => ({
+      id: "inventory-1", quantity: 4, verified_at: null, country_code: "BD", reserved_quantity: 5
+    }) }; } }; },
+    batch: async () => { batchCalled = true; return []; }
+  };
+  const response = await worker.fetch(request("/api/admin/inventory/verification", "POST", JSON.stringify({
+    inventory_id: "inventory-1", physical_quantity: 3, evidence_reference: "count-sheet-2"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 409);
+  assert.equal(batchCalled, false);
+});
+
+test("Inventory verification dashboard parses and does not persist owner token", () => {
+  const html = readFileSync(new URL("../public/admin-inventory-verification.html", import.meta.url), "utf8");
+  const start = html.indexOf("<script>");
+  const end = html.indexOf("</script>", start);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotThrow(() => new Script(html.slice(start + 8, end)));
+  assert.match(html, /noindex,nofollow/);
+  assert.doesNotMatch(html, /localStorage|sessionStorage/);
+  assert.match(html, /reserved_quantity/);
+});
 test("Bangladesh COD ledger is owner-only and records financial evidence pending review", async () => {
   const calls = [];
   const order = { id: "order-bd", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "DELIVERED", total_minor: 25000 };
