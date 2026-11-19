@@ -1502,6 +1502,7 @@ test("Catalog dashboard script is valid and does not persist owner credentials",
   assert.match(html,/function fillPriceForm\(p\)/);
   assert.match(html,/operation:"save_price"/);
   assert.match(html,/Price updated; existing approval status preserved/);
+  assert.match(html,/resetPriceForm\(\);selected=tr\.dataset\.id/);
   assert.match(html,/Category updated\./);
 
 });
