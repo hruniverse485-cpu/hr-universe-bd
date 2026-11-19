@@ -1317,6 +1317,87 @@ async function createCodOrder(request, env) {
 }
 
 
+async function managePartnerContacts(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const partnerType = text(url.searchParams.get("partner_type"), 20).toUpperCase();
+    const partnerId = text(url.searchParams.get("partner_id"), 100);
+    if (partnerType && !["COURIER", "SUPPLIER"].includes(partnerType)) {
+      return json({ success: false, error: "partner_type must be COURIER or SUPPLIER" }, 400);
+    }
+    try {
+      let query = "SELECT id, partner_type, partner_id, contact_name, role_title, email, phone, preferred_channel, is_primary, verification_status, verified_at, notes, created_at FROM partner_contacts";
+      const conditions = [];
+      const values = [];
+      if (partnerType) { conditions.push("partner_type = ?"); values.push(partnerType); }
+      if (partnerId) { conditions.push("partner_id = ?"); values.push(partnerId); }
+      if (conditions.length) query += " WHERE " + conditions.join(" AND ");
+      query += " ORDER BY is_primary DESC, contact_name COLLATE NOCASE LIMIT 200";
+      const result = await env.DB.prepare(query).bind(...values).all();
+      return json({ success: true, contacts: result.results || [] });
+    } catch (error) {
+      console.error("Partner contacts listing failed:", error);
+      return json({ success: false, error: "Unable to load partner contacts" }, 500);
+    }
+  }
+
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 10000) return json({ success: false, error: "Request body is too large" }, 413);
+    data = JSON.parse(raw);
+  } catch {
+    return json({ success: false, error: "Invalid JSON body" }, 400);
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return json({ success: false, error: "A JSON object is required" }, 400);
+  }
+  const partnerType = text(data.partner_type, 20).toUpperCase();
+  const partnerId = text(data.partner_id, 100);
+  const contactName = text(data.contact_name, 160);
+  const email = text(data.email, 254).toLowerCase() || null;
+  const phone = text(data.phone, 40) || null;
+  const channel = text(data.preferred_channel, 20).toUpperCase() || null;
+  if (!["COURIER", "SUPPLIER"].includes(partnerType) || !partnerId || (!contactName && !email && !phone)) {
+    return json({ success: false, error: "partner_type, partner_id and at least one contact detail are required" }, 400);
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return json({ success: false, error: "A valid email address is required" }, 400);
+  }
+  if (channel && !["EMAIL", "PHONE", "WHATSAPP", "OTHER"].includes(channel)) {
+    return json({ success: false, error: "preferred_channel must be EMAIL, PHONE, WHATSAPP or OTHER" }, 400);
+  }
+  try {
+    const table = partnerType === "COURIER" ? "courier_partners" : "suppliers";
+    const partner = await env.DB.prepare("SELECT id FROM " + table + " WHERE id = ?").bind(partnerId).first();
+    if (!partner) return json({ success: false, error: "Partner was not found" }, 404);
+    const id = crypto.randomUUID();
+    await env.DB.prepare(`
+      INSERT INTO partner_contacts (
+        id, partner_type, partner_id, contact_name, role_title, email,
+        phone, preferred_channel, is_primary, verification_status, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'UNVERIFIED', ?)
+    `).bind(id, partnerType, partnerId, contactName || null,
+      text(data.role_title, 120) || null, email, phone, channel,
+      text(data.notes, 2000) || null).run();
+    return json({
+      success: true,
+      message: "Contact saved as unverified. Verify the person's identity and channel before relying on it.",
+      contact: { id, partner_type: partnerType, partner_id: partnerId, verification_status: "UNVERIFIED", is_primary: false }
+    }, 201);
+  } catch (error) {
+    console.error("Partner contact save failed:", error);
+    return json({ success: false, error: "Unable to save partner contact" }, 500);
+  }
+}
+
 async function managePartnerInteractions(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
@@ -1498,6 +1579,8 @@ export default {
     if (path === "/api/admin/partners/couriers") return manageCourierPartners(request, env);
 
     if (path === "/api/admin/partners/interactions") return managePartnerInteractions(request, env);
+
+    if (path === "/api/admin/partners/contacts") return managePartnerContacts(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
       if (request.method !== "GET") {
