@@ -1317,6 +1317,41 @@ async function createCodOrder(request, env) {
 }
 
 
+async function listLocalSuppliers(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+  if (request.method !== "GET") return json({ success: false, error: "Method not allowed" }, 405);
+  const url = new URL(request.url);
+  const search = text(url.searchParams.get("q"), 100);
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 100));
+  try {
+    let query = `
+      SELECT s.id, s.supplier_name, s.origin_country_code, s.contact_email, s.status, s.created_at,
+        p.business_type, p.verification_status, p.district, p.area_name,
+        p.direct_to_customer, p.blind_shipping_supported, p.branded_packaging_supported,
+        p.sample_status, p.quality_score, p.dispatch_score, p.response_score,
+        p.last_stock_verified_at
+      FROM suppliers s
+      LEFT JOIN supplier_local_profiles p ON p.supplier_id = s.id
+    `;
+    const values = [];
+    if (search) {
+      query += " WHERE s.supplier_name LIKE ? OR s.contact_email LIKE ? OR s.id = ?";
+      values.push("%" + search + "%", "%" + search + "%", search);
+    }
+    query += " ORDER BY s.supplier_name COLLATE NOCASE LIMIT ?";
+    values.push(limit);
+    const result = await env.DB.prepare(query).bind(...values).all();
+    return json({ success: true, suppliers: result.results || [] });
+  } catch (error) {
+    console.error("Local supplier listing failed:", error);
+    return json({ success: false, error: "Unable to load supplier directory" }, 500);
+  }
+}
+
 async function managePartnerContacts(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
@@ -1581,6 +1616,8 @@ export default {
     if (path === "/api/admin/partners/interactions") return managePartnerInteractions(request, env);
 
     if (path === "/api/admin/partners/contacts") return managePartnerContacts(request, env);
+
+    if (path === "/api/admin/partners/suppliers") return listLocalSuppliers(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
       if (request.method !== "GET") {
