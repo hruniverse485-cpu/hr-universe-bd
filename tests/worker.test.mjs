@@ -1318,6 +1318,58 @@ test("Bangladesh delivery dashboard JavaScript parses and does not persist owner
 });
 
 
+test("Catalog administration requires owner authentication before database access", async () => {
+  let touched=false;
+  const response=await worker.fetch(request("/api/admin/catalog"),{
+    DB:{prepare(){touched=true;throw new Error("must not query DB");}},
+    HR_ADMIN_API_TOKEN:"owner-secret"
+  });
+  assert.equal(response.status,401);
+  assert.equal(touched,false);
+});
+
+test("Catalog administration lists owner products only after authentication", async () => {
+  let sql="",values=[];
+  const DB={prepare(query){sql=query;return{bind(...args){values=args;return{all:async()=>({results:[{id:"p1",status:"DRAFT"}]})};}};}};
+  const response=await worker.fetch(request("/api/admin/catalog?view=products"),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  const payload=await response.json();
+  assert.equal(response.status,200);
+  assert.equal(payload.products[0].id,"p1");
+  assert.match(sql,/FROM products p LEFT JOIN categories/);
+  assert.deepEqual(values,[50]);
+});
+
+test("Catalog product creation stores a DRAFT and audits it atomically", async () => {
+  const calls=[];
+  const DB={
+    prepare(sql){return{bind(...values){return{
+      first:async()=>sql.includes("SELECT id FROM categories")?{id:"cat"}:sql.includes("SELECT * FROM products")?null:{id:"p-new",status:"DRAFT"},
+      sql,values
+    };}};},
+    batch:async statements=>{calls.push(statements);return[{meta:{changes:1}},{meta:{changes:1}}];}
+  };
+  const response=await worker.fetch(request("/api/admin/catalog","POST",JSON.stringify({
+    operation:"save_product",name:"Cotton Shirt",slug:"cotton-shirt",category_id:"cat",description:"Soft cotton"
+  }),{authorization:"Bearer owner-secret","content-type":"application/json"}),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  const payload=await response.json();
+  assert.equal(response.status,201);
+  assert.equal(payload.product.status,"DRAFT");
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].length,2);
+  assert.match(calls[0][0].sql,/INSERT INTO products/);
+  assert.match(calls[0][1].sql,/INSERT INTO catalog_admin_audit/);
+});
+
+test("Catalog rejects invalid price and never activates it during creation", async () => {
+  const response=await worker.fetch(request("/api/admin/catalog","POST",JSON.stringify({
+    operation:"save_price",product_id:"p1",country_code:"BD",currency_code:"BDT",price_minor:-1
+  }),{authorization:"Bearer owner-secret","content-type":"application/json"}),{
+    DB:{prepare(){throw new Error("invalid input must be rejected before DB");}},
+    HR_ADMIN_API_TOKEN:"owner-secret"
+  });
+  assert.equal(response.status,400);
+});
+
 test("Inventory verification requires owner authentication", async () => {
   let touched = false;
   const response = await worker.fetch(request("/api/admin/inventory/verification"), {
