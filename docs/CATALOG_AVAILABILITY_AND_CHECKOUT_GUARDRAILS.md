@@ -23,7 +23,7 @@ The storefront must never submit or control the final price. `POST /api/orders` 
 
 ## Verification freshness limitation
 
-Public catalog eligibility uses a configurable freshness limit: `HR_INVENTORY_MAX_AGE_HOURS` accepts 1–720 hours and defaults to 72 hours when unset or invalid. Stock older than this limit is excluded from both the available-quantity calculation and product eligibility. The owner inventory dashboard flags stale rows and displays the active limit. This is a system-level default, not a guarantee that physical stock cannot change between checks.
+Public catalog eligibility uses a configurable freshness limit: `HR_INVENTORY_MAX_AGE_HOURS` accepts 1–72 hours and defaults to 72 hours when unset or invalid. Stock older than this limit, or carrying a future-dated verification timestamp, is excluded from both the available-quantity calculation and product eligibility. The owner inventory dashboard flags stale rows and displays the active limit. This is a system-level default, not a guarantee that physical stock cannot change between checks.
 
 ## Owner catalog management (Feature branch; migration 0014)
 - `GET/POST /api/admin/catalog` is owner-token protected. The private `/admin-catalog.html` dashboard manages draft product records, draft variants, and country/currency-specific prices.
