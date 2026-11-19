@@ -107,7 +107,12 @@ try:
     db.execute("INSERT INTO cod_reconciliation_entries (id, order_id, entry_type, amount_minor, currency_code, status, evidence_reference, occurred_at) VALUES ('cod-entry', 'cod-order', 'CUSTOMER_COD_COLLECTED', 100, 'BDT', 'PENDING_REVIEW', 'test-evidence', CURRENT_TIMESTAMP)")
     db.execute("UPDATE cod_reconciliation_entries SET status='VERIFIED', reviewed_by='OWNER', reviewed_at=CURRENT_TIMESTAMP WHERE id='cod-entry'")
     try:
-        db.execute("INSERT INTO cod_reconciliation_entries (id, order_id, entry_type, amount_minor, currency_code, status, evidence_reference, occurred_at) VALUES ('bad-cod-entry', 'cod-order', 'CUSTOMER_COD_COLLECTED', 100, 'USD', 'PENDING_REVIEW', 'test-evidence', CURRENT_TIMESTAMP)")
+        db.execute("INSERT INTO cod_reconciliation_entries (id, order_id, entry_type, amount_minor, currency_code, status, evidence_reference, occurred_at) VALUES ('duplicate-cod-entry', 'cod-order', 'CUSTOMER_COD_COLLECTED', 1, 'BDT', 'PENDING_REVIEW', 'test-evidence', CURRENT_TIMESTAMP)")
+        fail("COD ledger must reject duplicate evidence for the same order and entry type")
+    except sqlite3.IntegrityError:
+        pass
+    try:
+        db.execute("INSERT INTO cod_reconciliation_entries (id, order_id, entry_type, amount_minor, currency_code, status, evidence_reference, occurred_at) VALUES ('bad-cod-entry', 'cod-order', 'CUSTOMER_COD_COLLECTED', 100, 'USD', 'PENDING_REVIEW', 'test-evidence-usd', CURRENT_TIMESTAMP)")
         fail("COD ledger must reject non-BDT currency")
     except sqlite3.IntegrityError:
         pass
