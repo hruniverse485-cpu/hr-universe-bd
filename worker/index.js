@@ -264,6 +264,70 @@ async function compareSupplierOffers(request, env) {
   }
 }
 
+
+async function manageSupplierOffers(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner sourcing access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 12000) return json({ success: false, error: "Request too large" }, 413);
+    data = JSON.parse(raw);
+  } catch { return json({ success: false, error: "Invalid JSON request" }, 400); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "Invalid sourcing operation" }, 400);
+  const audit = async (type, id, action, before, after) => env.DB.prepare(
+    "INSERT INTO supplier_offer_audit (id,entity_type,entity_id,action,actor,before_json,after_json) VALUES (?,?,?,?,?,?,?)"
+  ).bind(crypto.randomUUID(), type, id, action, "OWNER_TOKEN", before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null).run();
+  try {
+    if (data.operation === "save_offer") {
+      const id = text(data.id,100) || crypto.randomUUID(), source = text(data.source_id,100);
+      const product = text(data.product_id,100), variant = text(data.variant_id,100);
+      const external = text(data.supplier_variant_id,160), currency = text(data.source_currency_code,3).toUpperCase();
+      const cost = integer(data.source_unit_cost_minor,0,Number.MAX_SAFE_INTEGER);
+      const availability = text(data.availability_status || "UNVERIFIED",20).toUpperCase();
+      if (!source || !product || !variant || !external || cost === null || !/^[A-Z]{3}$/.test(currency) || !["UNVERIFIED","AVAILABLE","UNAVAILABLE"].includes(availability))
+        return json({success:false,error:"Valid source, HR product/variant, supplier variant, cost, currency and availability are required"},400);
+      const src = await env.DB.prepare("SELECT src.id,src.source_currency_code FROM supplier_product_sources src WHERE src.id=? AND src.product_id=?").bind(source,product).first();
+      const pv = await env.DB.prepare("SELECT id FROM product_variants WHERE id=? AND product_id=?").bind(variant,product).first();
+      if (!src || src.source_currency_code !== currency || !pv) return json({success:false,error:"Supplier source, source currency or HR product/variant relationship is invalid"},409);
+      const before = await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
+      if (before && (before.source_id!==source || before.product_id!==product || before.variant_id!==variant || before.supplier_variant_id!==external))
+        return json({success:false,error:"Offer identity is immutable; create a new offer instead"},409);
+      if (before && before.approval_status==="ACTIVE") return json({success:false,error:"Pause an ACTIVE offer before editing it"},409);
+      await env.DB.prepare("INSERT INTO supplier_variant_offers (id,source_id,product_id,variant_id,supplier_variant_id,supplier_sku,source_unit_cost_minor,source_currency_code,availability_status,approval_status,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'DISCOVERED',CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET supplier_sku=excluded.supplier_sku,source_unit_cost_minor=excluded.source_unit_cost_minor,source_currency_code=excluded.source_currency_code,availability_status=excluded.availability_status,updated_at=CURRENT_TIMESTAMP")
+        .bind(id,source,product,variant,external,text(data.supplier_sku,120)||null,cost,currency,availability).run();
+      const after = await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
+      await audit("OFFER",id,before?"OFFER_UPDATED":"OFFER_CREATED",before,after);
+      return json({success:true,offer:after},before?200:201);
+    }
+    if (data.operation === "transition") {
+      const id=text(data.offer_id,100), target=text(data.approval_status,30).toUpperCase();
+      if (!id || !["TERMS_REVIEW","SAMPLE_REQUIRED","QUALITY_APPROVED","DESTINATION_APPROVED","ACTIVE","PAUSED","REJECTED"].includes(target))
+        return json({success:false,error:"Invalid offer transition"},400);
+      const before=await env.DB.prepare("SELECT o.*,src.source_status,s.status AS supplier_status FROM supplier_variant_offers o JOIN supplier_product_sources src ON src.id=o.source_id JOIN suppliers s ON s.id=src.supplier_id WHERE o.id=?").bind(id).first();
+      if (!before) return json({success:false,error:"Supplier offer not found"},404);
+      if (target==="DESTINATION_APPROVED" || target==="ACTIVE") {
+        const quote=await env.DB.prepare("SELECT q.id FROM supplier_variant_shipping_quotes q JOIN countries c ON c.country_code=q.destination_country_code AND c.is_active=1 WHERE q.offer_id=? AND q.availability_status='AVAILABLE' AND q.currency_code=c.currency_code AND datetime(q.quoted_at)<=CURRENT_TIMESTAMP AND (q.expires_at IS NULL OR datetime(q.expires_at)>CURRENT_TIMESTAMP) AND (q.currency_code=? OR (q.fx_evidence_reference IS NOT NULL AND q.source_to_destination_fx_numerator>0 AND q.source_to_destination_fx_denominator>0)) LIMIT 1").bind(id,before.source_currency_code).first();
+        if (!quote) return json({success:false,error:"A current destination-valid shipping quote and FX evidence are required"},409);
+      }
+      if (target==="ACTIVE" && (before.supplier_status!=="ACTIVE" || before.source_status!=="AVAILABLE" || before.availability_status!=="AVAILABLE" || !before.evidence_reference || !before.verified_at || before.quality_score==null || before.service_score==null || before.packaging_score==null || before.delivery_score==null || !["NEUTRAL_CONFIRMED","BRANDED_CONFIRMED"].includes(before.packaging_status) || Number(before.supplier_branding_excluded)!==1))
+        return json({success:false,error:"ACTIVE requires an active supplier/source, available stock, verification evidence, all quality scores and confirmed supplier-branding-free packaging"},409);
+      await env.DB.prepare("UPDATE supplier_variant_offers SET approval_status=?,updated_at=CURRENT_TIMESTAMP,verified_at=CASE WHEN ?='ACTIVE' THEN COALESCE(verified_at,CURRENT_TIMESTAMP) ELSE verified_at END WHERE id=?").bind(target,target,id).run();
+      const after=await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
+      await audit("OFFER",id,"STATUS_"+target,before,after);
+      return json({success:true,offer:after});
+    }
+    return json({success:false,error:"operation must be save_offer or transition"},400);
+  } catch(error) {
+    console.error("Supplier offer management failed:",error);
+    return json({success:false,error:"Unable to save supplier offer operation"},500);
+  }
+}
+
 async function health(env) {
   if (!env.DB) {
     return json({
@@ -1051,6 +1115,8 @@ export default {
 
       return health(env);
     }
+
+    if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
       if (request.method !== "GET") {
