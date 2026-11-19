@@ -292,3 +292,12 @@ At every work session, record the current branch/head commit, changed files, tes
 - Product image upload remains blocked on purpose: no R2 binding or bucket has been confirmed. The documented private-storage design remains the implementation specification; do not show fabricated image-upload success or expose unverified external image URLs.
 - Updated `docs/TECHNOLOGY_COST_AUTOMATION_REGISTER.md` to remove the stale claim that the current storefront is still a demo/legacy storefront and to document the no-upfront-cost gate.
 - This checkpoint is documentation-only. No runtime code, production data, Cloudflare resources, or live supplier accounts were changed. CI status for this documentation commit has not yet been confirmed.
+
+
+## Catalog product editing usability fix (2026-11-20)
+
+- Fixed the owner catalog dashboard so selecting an existing product loads its saved ID, name, slug, category, brand and description into the draft product form. Previously the form was reset blank, so the advertised edit workflow could not be completed reliably.
+- Added an explicit **New product** action that clears selection and resets dependent variant/price panels while retaining safe BD/BDT defaults.
+- Added regression assertions for product-form population, selected-record ID binding, new-product reset affordance, and the existing no-browser-storage credential rule.
+- Changes are isolated to `public/admin-catalog.html` and `tests/worker.test.mjs` on `feature/global-hybrid-rebuild`. No database schema, production resource, supplier account, or customer data was changed.
+- CI for these commits is not yet confirmed; do not describe the fix as CI-verified until a successful workflow result is observed.
