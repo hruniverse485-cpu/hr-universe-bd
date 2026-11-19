@@ -37,7 +37,7 @@ try:
         "product_prices", "order_items", "supplier_product_sources",
         "supplier_shipping_quotes", "supplier_sync_runs", "inventory_reservations",
         "supplier_variant_offers", "supplier_variant_shipping_quotes", "supplier_offer_audit",
-        "cod_reconciliation_entries", "order_return_inspections", "inventory_verification_events",
+        "cod_reconciliation_entries", "order_return_inspections", "inventory_verification_events", "catalog_admin_audit",
     }
     actual_tables = {
         row[0] for row in db.execute(
