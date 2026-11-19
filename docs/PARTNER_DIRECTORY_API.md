@@ -44,3 +44,14 @@ The API validates the partner exists and stores the entry as `direction=INTERNAL
 - Supplier local quote management and supplier API integrations.
 
 Those capabilities require separate implementation, test coverage, verified evidence and, for external actions, explicit owner approval. Migration 0011 remains unapplied to production; no partner is contracted or connected by these endpoints.
+
+
+## Courier rate cards
+
+### `GET /api/admin/partners/courier-rates?courier_id=<id>`
+Lists up to 200 recorded rate cards, optionally filtered by courier.
+
+### `POST /api/admin/partners/courier-rates`
+Required: `courier_id`, `rate_name`, `base_fee_minor`. Optional: `origin_zone`, `destination_district`, `destination_area`, `service_type`, `weight_from_grams`, `weight_to_grams`, `cod_fee_minor`, `return_fee_minor`, `remote_area_fee_minor`, `currency_code`, `estimated_min_days`, `estimated_max_days`, `pickup_cutoff_local`, `effective_from`, `effective_until`, `evidence_reference`.
+
+The API verifies the courier and currency exist, validates non-negative integer amounts/weights and delivery-day order, and always stores the rate as `UNVERIFIED` with no verification timestamp. A rate card is evidence to review, not an instruction to book or an eligible input to automated selection. The dashboard displays monetary values in the currency's minor units (for BDT, poisha).
