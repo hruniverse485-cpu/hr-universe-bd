@@ -1301,9 +1301,8 @@ test("Bangladesh COD ledger is owner-only and records financial evidence pending
 test("COD ledger rejects unsupported methods before parsing a request body", async () => {
   let databaseTouched = false;
   const DB = { prepare() { databaseTouched = true; throw new Error("Database should not be queried"); } };
-  const response = await worker.fetch(request("/api/admin/orders/cod-ledger", "DELETE"), {
-    DB, HR_ADMIN_API_TOKEN: "owner-secret",
-    headers: { authorization: "Bearer owner-secret" }
+  const response = await worker.fetch(request("/api/admin/orders/cod-ledger", "DELETE", undefined, { authorization: "Bearer owner-secret" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
   });
   assert.equal(response.status, 405);
   assert.equal(databaseTouched, false);
