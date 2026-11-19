@@ -76,7 +76,7 @@ WHEN OLD.status NOT IN ('CANCELLED', 'REJECTED')
 BEGIN
   UPDATE inventory
   SET quantity = quantity + (
-    SELECT r.quantity
+    SELECT COALESCE(SUM(r.quantity), 0)
     FROM inventory_reservations r
     WHERE r.inventory_id = inventory.id
       AND r.order_id = NEW.id
