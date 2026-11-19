@@ -79,6 +79,14 @@ The owner retains control of banking, payment credentials, legal declarations, p
 At every work session, record the current branch/head commit, changed files, test results, unresolved defects, blockers, and the next exact action. Never report a feature as complete without implementation and verification evidence.
 
 
+## Catalog market-price editing checkpoint (2026-11-20)
+
+- The owner catalog dashboard now supports editing existing PENDING and INACTIVE market-price records without creating duplicate price rows.
+- The owner API preserves the existing price ID and approval status, verifies the product/market/variant relationship, rejects edits to ACTIVE prices until they are deactivated, and writes the mutation with an audit event in one D1 batch.
+- The dashboard pre-fills the selected price, supports cancel, and keeps the existing activate/deactivate controls. Active prices are not offered for direct editing.
+- Added API regression tests for successful audited edits and rejection of active-price edits, plus dashboard source assertions.
+- Changes are on `feature/global-hybrid-rebuild`. The automated test suite and GitHub Actions result have not yet been confirmed. No database migration, production resource, deployment, or external service was changed.
+
 ## Latest implementation checkpoint (2026-11-18)
 
 - Replaced `public/index.html` on the Feature branch with a responsive premium discovery storefront based on the owner's approved editorial + marketplace direction.
