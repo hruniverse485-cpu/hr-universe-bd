@@ -238,3 +238,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - This is Feature-branch code only. Migration 0014 is not applied to production; dashboard is not live. CI validation for the latest catalog changes is pending.
 - GitHub Actions run [#284](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44571261084) passed on temporary non-merged validation PR head `d36ed94591d57080c83ac4d7dc20c5f3d828f7fe`, based on Feature commit `71f4c3257f9309209c00db554723a08ae13cf7e8`: Worker syntax passed, all 108 Node tests passed, and all 14 ordered SQL migrations passed disposable SQLite validation. The first CI attempt exposed three test-harness issues (a broad supplier-source assertion, missing owner header in one test, and a mock not reflecting the committed product); all were corrected and the recheck passed.
 - Remaining: extend migration validator with catalog audit integrity/activation SQL checks, add category management and product image handling, improve admin form edit workflow, and integrate catalog with a complete customer storefront/cart/checkout. No deployment or external supplier action occurred.
+
+
+## Category management and catalog validation checkpoint (2026-11-19)
+
+- Extended migration 0014's catalog audit entity constraint to include `CATEGORY`; validator now exercises an allowed category audit record and rejects an unsupported entity type.
+- Added owner-only category creation and activation/deactivation operations to `/api/admin/catalog`, with append-only audit records. New categories start inactive. Parent must be active before a child; active children must be deactivated before their parent; recursive hierarchy checks reject circular parent relationships.
+- Added category create/activation controls to `public/admin-catalog.html`; new category is created inactive and can be explicitly activated.
+- GitHub Actions run [#293](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44571740222) passed on temporary non-merged validation PR head `c5cd60184c3be5b0b3c6decbb98db931ab4cf0f4`, based on Feature commit `b9f9123b048324bd85aa8f8047df8c4118be890e`: Worker syntax passed, all 109 Node tests passed, and all 14 ordered SQL migrations passed disposable SQLite validation.
+- The temporary validation PR was closed without merging. All implementation changes remain isolated to `feature/global-hybrid-rebuild`; no production database migration or deployment occurred.
+- Remaining: category editing/deletion policy, product image upload/management, richer product edit selection, variant-level price/availability UI polish, and complete customer storefront/cart/checkout. Live Cloudflare D1 integration and concurrency tests remain outstanding.
