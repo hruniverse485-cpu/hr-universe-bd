@@ -35,7 +35,8 @@ try:
         "product_variants", "product_images", "suppliers", "supplier_products",
         "warehouses", "inventory", "shipping_methods", "shipping_rates",
         "product_prices", "order_items", "supplier_product_sources",
-        "supplier_shipping_quotes", "supplier_sync_runs", "inventory_reservations",\n        "supplier_variant_offers", "supplier_variant_shipping_quotes",
+        "supplier_shipping_quotes", "supplier_sync_runs", "inventory_reservations",
+        "supplier_variant_offers", "supplier_variant_shipping_quotes",
     }
     actual_tables = {
         row[0] for row in db.execute(
