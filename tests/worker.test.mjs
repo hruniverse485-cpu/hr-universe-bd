@@ -479,3 +479,40 @@ test("concurrent idempotency-key conflicts also compare the original request fin
   assert.match(conflictHandler, /constantTimeEqual\(existing\.idempotency_request_hash, requestFingerprint\)/);
   assert.match(conflictHandler, /different order request/);
 });
+
+
+test("order fingerprint canonicalization ignores JSON object key order", async () => {
+  const { createHash } = await import("node:crypto");
+  const canonical = JSON.stringify({ customer_name: "Same", customer_phone: "0100" });
+  const fingerprint = createHash("sha256").update(canonical).digest("hex");
+  const db = {
+    prepare(sql) {
+      assert.match(sql, /idempotency_request_hash/);
+      return {
+        bind() {
+          return {
+            first: async () => ({
+              id: "existing-order",
+              status: "PENDING",
+              created_at: "2026-11-19T00:00:00.000Z",
+              idempotency_request_hash: fingerprint
+            })
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/orders", "POST", JSON.stringify({
+      customer_phone: "0100",
+      customer_name: "Same"
+    }), {
+      "content-type": "application/json",
+      "Idempotency-Key": "order-key-123"
+    }),
+    { DB: db }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.duplicate, true);
+});
