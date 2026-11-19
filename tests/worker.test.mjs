@@ -1121,7 +1121,7 @@ test("Bangladesh COD delivery queue is owner-only and reads only BD BDT COD orde
   assert.match(sql, /country_code = 'BD'.*currency_code = 'BDT'.*payment_method = 'COD'/s);
 });
 
-test("Bangladesh COD delivery update enforces safe status transition and records an event", async () => {
+test("Bangladesh COD delivery update atomically records its audit event", async () => {
   const statements = [];
   const before = {
     id: "order-bd", status: "PENDING", country_code: "BD", currency_code: "BDT",
@@ -1129,17 +1129,20 @@ test("Bangladesh COD delivery update enforces safe status transition and records
     courier_name: null, courier_service: null, consignment_id: null,
     tracking_url: null, delivery_notes: null
   };
-  const DB = { prepare(sql) {
-    statements.push(sql);
-    return {
-      bind(...values) {
-        return {
-          first: async () => before,
-          run: async () => ({ meta: { changes: 1 } })
-        };
-      }
-    };
-  } };
+  const DB = {
+    prepare(sql) {
+      return {
+        bind(...values) {
+          statements.push({ sql, values });
+          return { first: async () => before };
+        }
+      };
+    },
+    async batch(batchStatements) {
+      assert.equal(batchStatements.length, 2);
+      return [{ meta: { changes: 1 } }, { meta: { changes: 1 } }];
+    }
+  };
   const response = await worker.fetch(request("/api/admin/orders/delivery", "PATCH", JSON.stringify({
     order_id: "order-bd", delivery_status: "READY_TO_SHIP",
     courier_name: "Manual Test Courier", delivery_notes: "Parcel packed"
@@ -1151,8 +1154,34 @@ test("Bangladesh COD delivery update enforces safe status transition and records
   assert.equal(payload.delivery_status, "READY_TO_SHIP");
   assert.equal(payload.cod_collected_minor_changed, false);
   assert.match(payload.message, /not performed by this manual record/i);
-  assert.match(statements[1], /UPDATE orders SET/);
-  assert.match(statements[2], /INSERT INTO order_delivery_events/);
+  assert.match(statements[1].sql, /UPDATE orders SET/);
+  assert.match(statements[2].sql, /INSERT INTO order_delivery_events[\\s\\S]*WHERE EXISTS/);
+  assert.match(statements[2].sql, /delivery_updated_at = \\?/);
+  assert.equal(statements[2].values[1], "order-bd");
+});
+
+test("Bangladesh COD delivery does not create an audit event after a stale conditional update", async () => {
+  const before = {
+    id: "order-bd", status: "PENDING", country_code: "BD", currency_code: "BDT",
+    payment_method: "COD", total_minor: 1000, delivery_status: "NOT_DISPATCHED"
+  };
+  let batchLength = 0;
+  const DB = {
+    prepare(sql) {
+      return { bind() { return { first: async () => before }; } };
+    },
+    async batch(statements) {
+      batchLength = statements.length;
+      return [{ meta: { changes: 0 } }, { meta: { changes: 0 } }];
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/delivery", "PATCH", JSON.stringify({
+    order_id: "order-bd", delivery_status: "READY_TO_SHIP"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 409);
+  assert.equal(batchLength, 2);
 });
 
 test("Bangladesh COD delivery rejects invalid transitions and non-HTTPS tracking URLs", async () => {
