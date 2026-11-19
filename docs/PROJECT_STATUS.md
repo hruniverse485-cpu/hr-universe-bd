@@ -177,3 +177,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added a regression test for transactional batch use and complete audit snapshots. CI run [#88](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44530411188) passed: 32 Node tests, Worker syntax, and all eight ordered migrations on disposable SQLite.
 - Dashboard update CI run [#89](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44530420335) also passed: 32 Node tests, Worker syntax, and all eight ordered migrations.
 - This validates source syntax, route-boundary tests, and disposable SQLite migration compatibility. It does not yet constitute a live Cloudflare D1 integration/concurrency test. No production migration, deployment, supplier API connection, supplier order, or change to `main` occurred.
+
+
+## Supplier shipping-quote identity hardening (2026-11-19)
+
+- A focused review found that an existing shipping-quote ID could be submitted with a different offer or destination. The UPSERT did not rewrite those identity columns, but without an explicit guard it could misleadingly accept an update request against the wrong quote record.
+- Added a server-side immutable-identity check: an existing quote may only be updated for its original supplier offer and destination country. Reassignment returns HTTP 409 before any mutation or audit batch.
+- Added a source-level regression assertion and an API-boundary test with a mocked D1 binding proving that a mismatched offer/destination is rejected and no mutation batch is executed.
+- CI run [#93](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44535402947) completed successfully on commit `46ba9153db9100e6547fb470176efdcc0f16ef70`: Worker syntax passed, all 34 Node tests passed, and all eight ordered migrations passed disposable SQLite validation.
+- Scope remains limited to the Feature branch. No production D1 migration, deployment, supplier connection/order, or change to `main` occurred.
+- Next: add stronger end-to-end-style mocked D1 tests for supplier offer state transitions and the order creation/idempotency/reservation path; then resolve stale duplicated checkpoint text in this status document.
