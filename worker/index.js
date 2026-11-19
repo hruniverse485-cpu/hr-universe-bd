@@ -1963,6 +1963,112 @@ async function manageCourierPartners(request, env) {
 }
 
 
+async function manageInventoryVerification(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner inventory access is not configured" }, 503);
+  const authorization = request.headers.get("Authorization") || "";
+  const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!constantTimeEqual(suppliedToken, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+
+  try {
+    if (request.method === "GET") {
+      const result = await env.DB.prepare(`SELECT i.id AS inventory_id, i.product_id, p.name AS product_name,
+        i.variant_id, pv.sku, pv.variant_name, i.warehouse_id, w.warehouse_name,
+        w.city, i.quantity AS available_quantity,
+        COALESCE((SELECT SUM(r.quantity) FROM inventory_reservations r
+          WHERE r.inventory_id = i.id AND r.status = 'RESERVED'), 0) AS reserved_quantity,
+        i.verified_at, i.updated_at,
+        (SELECT e.created_at FROM inventory_verification_events e
+          WHERE e.inventory_id = i.id ORDER BY e.created_at DESC LIMIT 1) AS last_verification_event_at
+        FROM inventory i
+        JOIN products p ON p.id = i.product_id
+        JOIN product_variants pv ON pv.id = i.variant_id AND pv.product_id = i.product_id
+        JOIN warehouses w ON w.id = i.warehouse_id
+        WHERE w.country_code = 'BD'
+        ORDER BY i.verified_at IS NULL DESC, i.updated_at DESC LIMIT 200`).all();
+      return json({ success: true, inventory: result.results || [] });
+    }
+    if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+
+    let data;
+    try {
+      const raw = await request.text();
+      if (raw.length > 5000) return json({ success: false, error: "Request too large" }, 413);
+      data = JSON.parse(raw);
+    } catch {
+      return json({ success: false, error: "Invalid JSON request" }, 400);
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      return json({ success: false, error: "Invalid inventory verification" }, 400);
+    }
+
+    const inventoryId = text(data.inventory_id, 100);
+    const physicalQuantity = integer(data.physical_quantity, 0, 1000000);
+    const evidence = text(data.evidence_reference, 500);
+    const notes = text(data.notes, 1000) || null;
+    if (!inventoryId || physicalQuantity === null || !evidence) {
+      return json({ success: false, error: "inventory_id, a non-negative physical count and evidence reference are required" }, 400);
+    }
+
+    const current = await env.DB.prepare(`SELECT i.id, i.quantity, i.verified_at, w.country_code,
+      COALESCE((SELECT SUM(r.quantity) FROM inventory_reservations r
+        WHERE r.inventory_id = i.id AND r.status = 'RESERVED'), 0) AS reserved_quantity
+      FROM inventory i JOIN warehouses w ON w.id = i.warehouse_id
+      WHERE i.id = ?`).bind(inventoryId).first();
+    if (!current) return json({ success: false, error: "Inventory row not found" }, 404);
+    if (current.country_code !== "BD") return json({ success: false, error: "This verification workflow is limited to Bangladesh inventory" }, 409);
+
+    const reserved = Number(current.reserved_quantity || 0);
+    if (!Number.isSafeInteger(reserved) || reserved < 0 || physicalQuantity < reserved) {
+      return json({ success: false, error: "Physical count cannot be lower than units already reserved for customer orders" }, 409);
+    }
+    const availableQuantity = physicalQuantity - reserved;
+    const verificationId = crypto.randomUUID();
+    const verifiedAt = new Date().toISOString();
+    const actor = text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER";
+
+    const statements = await env.DB.batch([
+      env.DB.prepare(`UPDATE inventory
+        SET quantity = ?, verified_at = ?, updated_at = ?, verification_token = ?
+        WHERE id = ? AND quantity = ? AND verified_at IS ?`).bind(
+          availableQuantity, verifiedAt, verifiedAt, verificationId,
+          inventoryId, Number(current.quantity), current.verified_at ?? null
+        ),
+      env.DB.prepare(`INSERT INTO inventory_verification_events
+        (id, inventory_id, previous_available_quantity, verified_physical_quantity,
+         reserved_quantity, new_available_quantity, evidence_reference, notes, verified_by)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM inventory
+          WHERE id = ? AND verification_token = ? AND quantity = ?
+        )`).bind(
+          verificationId, inventoryId, Number(current.quantity), physicalQuantity,
+          reserved, availableQuantity, evidence, notes, actor,
+          inventoryId, verificationId, availableQuantity
+        )
+    ]);
+
+    if (!statements[0]?.meta || statements[0].meta.changes !== 1) {
+      return json({ success: false, error: "Inventory changed during verification; refresh and retry" }, 409);
+    }
+    if (!statements[1]?.meta || statements[1].meta.changes !== 1) {
+      return json({ success: false, error: "Inventory verification audit event was not recorded" }, 500);
+    }
+    return json({ success: true, verification: {
+      id: verificationId, inventory_id: inventoryId,
+      previous_available_quantity: Number(current.quantity),
+      physical_quantity: physicalQuantity, reserved_quantity: reserved,
+      available_quantity: availableQuantity, verified_at: verifiedAt
+    } }, 201);
+  } catch (error) {
+    if (/UNIQUE constraint failed/i.test(String(error?.message || error))) {
+      return json({ success: false, error: "This evidence reference was already used for this inventory row" }, 409);
+    }
+    console.error("Inventory verification failed:", error);
+    return json({ success: false, error: "Unable to save inventory verification" }, 500);
+  }
+}
+
 async function manageBangladeshCodLedger(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner COD ledger access is not configured" }, 503);
@@ -2397,7 +2503,7 @@ export default {
     if (path === "/api/admin/orders/cancel") return cancelPendingOrder(request, env);
 
     if (path === "/api/admin/orders/delivery") return manageBangladeshCodDelivery(request, env);
-    if (path === "/api/admin/orders/cod-ledger") return manageBangladeshCodLedger(request, env);
+    if (path === "/api/admin/inventory/verification") return manageInventoryVerification(request, env);\n    if (path === "/api/admin/orders/cod-ledger") return manageBangladeshCodLedger(request, env);
     if (path === "/api/admin/orders/returns") return manageBangladeshReturnInspections(request, env);
 
     if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
