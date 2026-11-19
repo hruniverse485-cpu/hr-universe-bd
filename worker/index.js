@@ -271,7 +271,12 @@ async function manageSupplierOffers(request, env) {
   const auth = request.headers.get("Authorization") || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
-  if (request.method === "GET") {\n    const limit = Math.min(100, Math.max(1, Number(new URL(request.url).searchParams.get("limit")) || 50));\n    const rows = await env.DB.prepare("SELECT o.*, src.source_status, s.name AS supplier_name FROM supplier_variant_offers o JOIN supplier_product_sources src ON src.id=o.source_id JOIN suppliers s ON s.id=src.supplier_id ORDER BY o.updated_at DESC, o.created_at DESC LIMIT ?").bind(limit).all();\n    return json({ success: true, offers: rows.results || [] });\n  }\n  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+  if (request.method === "GET") {
+    const limit = Math.min(100, Math.max(1, Number(new URL(request.url).searchParams.get("limit")) || 50));
+    const rows = await env.DB.prepare("SELECT o.*, src.source_status, s.name AS supplier_name FROM supplier_variant_offers o JOIN supplier_product_sources src ON src.id=o.source_id JOIN suppliers s ON s.id=src.supplier_id ORDER BY o.updated_at DESC, o.created_at DESC LIMIT ?").bind(limit).all();
+    return json({ success: true, offers: rows.results || [] });
+  }
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
   let data;
   try {
     const raw = await request.text();
