@@ -39,7 +39,7 @@ tbody tr{cursor:pointer}tbody tr:hover{background:#f7f9fc}tbody tr.selected{back
 <div id="workspace" class="hidden">
 <section class="panel">
 <div class="row"><h2 style="flex:1;margin:0">Bangladesh inventory rows</h2><button class="secondary" id="refresh">Refresh</button></div>
-<p class="notice">The inventory quantity is the available (unreserved) quantity. Enter the physically counted total; the system subtracts active order reservations to calculate available stock. If physical count is below reserved units, the update is blocked. Evidence is required.</p>
+<p class="notice" id="freshnessNotice">The inventory quantity is the available (unreserved) quantity. Enter the physically counted total; the system subtracts active order reservations to calculate available stock. If physical count is below reserved units, the update is blocked. Evidence is required.</p>
 <div class="tablewrap"><table><thead><tr><th>Product / Variant</th><th>Warehouse</th><th>Available</th><th>Reserved</th><th>Last verified</th></tr></thead><tbody id="inventoryRows"><tr><td colspan="5" class="muted">Connect to load inventory.</td></tr></tbody></table></div>
 </section>
 <section class="panel">
@@ -89,6 +89,7 @@ tbody tr{cursor:pointer}tbody tr:hover{background:#f7f9fc}tbody tr.selected{back
   async function load() {
     const data = await api("/api/admin/inventory/verification");
     inventory = Array.isArray(data.inventory) ? data.inventory : [];
+    $("freshnessNotice").textContent = "The inventory quantity is the available (unreserved) quantity. Enter the physically counted total; active order reservations are subtracted. Counts below reserved units are blocked. Public catalog stock expires after "+data.inventory_max_age_hours+" hours without re-verification. Evidence is required.";
     render();
   }
   $("connect").addEventListener("click", async () => {
