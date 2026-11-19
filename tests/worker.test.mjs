@@ -1181,3 +1181,16 @@ test("Bangladesh COD delivery API rejects unsupported methods", async () => {
   }), { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" });
   assert.equal(response.status, 405);
 });
+
+
+test("Bangladesh delivery dashboard JavaScript parses and does not persist owner tokens", () => {
+  const html = readFileSync(new URL("../public/admin-delivery.html", import.meta.url), "utf8");
+  const start = html.indexOf("<script>");
+  const end = html.indexOf("</script>", start);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotThrow(() => new Script(html.slice(start + 8, end)));
+  assert.match(html, /OWNER OPERATIONS/);
+  assert.match(html, /noindex,nofollow/);
+  assert.doesNotMatch(html, /localStorage|sessionStorage/);
+  assert.match(html, /does not book a courier/);
+});
