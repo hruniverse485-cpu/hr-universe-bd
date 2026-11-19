@@ -1421,6 +1421,8 @@ test("Courier settlement cannot exceed recorded customer COD collection", async 
   });
   assert.equal(response.status, 409);
   assert.match(insertSql, /SUM\(amount_minor\)/);
+  assert.match(insertSql, /entry_type = 'COURIER_SETTLEMENT_RECEIVED'/);
+  assert.doesNotMatch(insertSql, /status <> 'DISPUTED'/);
   assert.match((await response.json()).error, /cannot exceed recorded customer COD collection/i);
 });
 
@@ -1442,6 +1444,8 @@ test("Customer COD collection cannot exceed order total", async () => {
   });
   assert.equal(response.status, 409);
   assert.match(insertSql, /total_minor >= \?/);
+  assert.match(insertSql, /entry_type = 'CUSTOMER_COD_COLLECTED'/);
+  assert.doesNotMatch(insertSql, /status <> 'DISPUTED'/);
 });
 
 test("COD operations dashboard parses and keeps owner token out of browser storage", () => {
