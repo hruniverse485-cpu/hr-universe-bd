@@ -331,3 +331,55 @@ test("supplier shipping quote identity cannot be reassigned across offers or des
   assert.match(workerSource, /before\.offer_id !== offerId/);
   assert.match(workerSource, /before\.destination_country_code !== destination/);
 });
+
+
+test("supplier quote update rejects reassignment before mutation or audit batch", async () => {
+  let batchCalled = false;
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...values) {
+          return {
+            first: async () => {
+              if (sql.includes("FROM supplier_variant_offers o JOIN countries")) {
+                assert.deepEqual(values, ["US", "offer-current"]);
+                return { id: "offer-current", source_currency_code: "EUR", destination_currency: "USD" };
+              }
+              if (sql.includes("FROM supplier_variant_shipping_quotes WHERE id")) {
+                return { id: "quote-existing", offer_id: "another-offer", destination_country_code: "CA" };
+              }
+              throw new Error("Unexpected database query: " + sql);
+            }
+          };
+        }
+      };
+    },
+    async batch() { batchCalled = true; throw new Error("Mutation must not run"); }
+  };
+  const payload = {
+    operation: "save_quote",
+    id: "quote-existing",
+    offer_id: "offer-current",
+    destination_country_code: "US",
+    shipping_method_code: "STANDARD",
+    shipping_cost_minor: 500,
+    currency_code: "USD",
+    fx_numerator: 2,
+    fx_denominator: 1,
+    fx_evidence_reference: "fx-evidence-2026-11-19",
+    quoted_at: "2026-11-19T12:00:00Z",
+    estimated_min_days: 5,
+    estimated_max_days: 9
+  };
+  const response = await worker.fetch(
+    request("/api/admin/sourcing/offers", "POST", JSON.stringify(payload), {
+      authorization: "Bearer owner-secret",
+      "content-type": "application/json"
+    }),
+    { DB: db, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const result = await response.json();
+  assert.equal(response.status, 409);
+  assert.match(result.error, /identity is immutable/i);
+  assert.equal(batchCalled, false);
+});
