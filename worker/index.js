@@ -2148,9 +2148,15 @@ async function manageCatalogAdmin(request, env) {
       if(!market.is_active||!market.currency_active)return json({success:false,error:"Market and currency must be active"},409);
       const from=text(data.valid_from,40)||null,until=text(data.valid_until,40)||null;
       if((from&&Number.isNaN(Date.parse(from)))||(until&&Number.isNaN(Date.parse(until)))||(from&&until&&Date.parse(until)<=Date.parse(from)))return json({success:false,error:"Invalid price validity window"},400);
-      const mutation=env.DB.prepare("INSERT INTO product_prices (id,product_id,variant_id,country_code,currency_code,price_minor,compare_at_price_minor,status,valid_from,valid_until) VALUES (?,?,?,?,?,?,?,'PENDING',?,?)").bind(id,pid,vid,country,currency,price,compare,from,until);
-      await recordCatalogAudit(mutation,"PRICE",id,"PRICE_CREATED_PENDING",null,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
-      return json({success:true,price:await env.DB.prepare("SELECT * FROM product_prices WHERE id=?").bind(id).first()},201);
+      const before=data.id?await env.DB.prepare("SELECT * FROM product_prices WHERE id=?").bind(id).first():null;
+      if(data.id&&!before)return json({success:false,error:"Price not found"},404);
+      if(before&&before.status==="ACTIVE")return json({success:false,error:"Active prices cannot be edited; deactivate the price first"},409);
+      if(before&&(before.product_id!==pid))return json({success:false,error:"Price product identity cannot be changed"},409);
+      const mutation=before
+        ?env.DB.prepare("UPDATE product_prices SET variant_id=?,country_code=?,currency_code=?,price_minor=?,compare_at_price_minor=?,valid_from=?,valid_until=? WHERE id=? AND status<>'ACTIVE'").bind(vid,country,currency,price,compare,from,until,id)
+        :env.DB.prepare("INSERT INTO product_prices (id,product_id,variant_id,country_code,currency_code,price_minor,compare_at_price_minor,status,valid_from,valid_until) VALUES (?,?,?,?,?,?,?,'PENDING',?,?)").bind(id,pid,vid,country,currency,price,compare,from,until);
+      await recordCatalogAudit(mutation,"PRICE",id,before?"PRICE_UPDATED":"PRICE_CREATED_PENDING",before,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
+      return json({success:true,price:await env.DB.prepare("SELECT * FROM product_prices WHERE id=?").bind(id).first()},before?200:201);
     }
 
     if(data.operation==="set_variant_status"){
