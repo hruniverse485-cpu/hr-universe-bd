@@ -2029,11 +2029,22 @@ async function manageBangladeshCodLedger(request, env) {
         )`;
         insertValues.push(orderId, amount);
       } else if (entryType === "COURIER_SETTLEMENT_RECEIVED") {
-        // Settlement cannot exceed all recorded customer collections, and the
-        // check is part of the insert to avoid concurrent over-settlement.
+        // Settlement cannot exceed verified customer collections. The check
+        // is part of the insert to avoid concurrent over-settlement.
         insertSql += ` WHERE ? + COALESCE((
           SELECT SUM(amount_minor) FROM cod_reconciliation_entries
           WHERE order_id = ? AND entry_type = 'COURIER_SETTLEMENT_RECEIVED'
+        ), 0) <= COALESCE((
+          SELECT SUM(amount_minor) FROM cod_reconciliation_entries
+          WHERE order_id = ? AND entry_type = 'CUSTOMER_COD_COLLECTED' AND status = 'VERIFIED'
+        ), 0)`;
+        insertValues.push(amount, orderId, orderId);
+      } else if (entryType === "CUSTOMER_REFUND") {
+        // Refunds must not exceed verified COD collected; all prior refund
+        // records count conservatively, including those still under review.
+        insertSql += ` WHERE ? + COALESCE((
+          SELECT SUM(amount_minor) FROM cod_reconciliation_entries
+          WHERE order_id = ? AND entry_type = 'CUSTOMER_REFUND'
         ), 0) <= COALESCE((
           SELECT SUM(amount_minor) FROM cod_reconciliation_entries
           WHERE order_id = ? AND entry_type = 'CUSTOMER_COD_COLLECTED' AND status = 'VERIFIED'
