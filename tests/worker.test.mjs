@@ -256,3 +256,11 @@ test("supplier offer management enforces approval evidence gates and immutable i
   assert.match(workerSource, /supplier_offer_audit/);
   assert.match(workerSource, /\/api\/admin\/sourcing\/offers/);
 });
+
+
+test("supplier offer admin exposes quote and verification evidence operations", () => {
+  assert.match(workerSource, /data\.operation === "save_quote"/);
+  assert.match(workerSource, /data\.operation === "verify_offer"/);
+  assert.match(workerSource, /Cross-currency quotes require FX evidence/);
+  assert.match(workerSource, /Four 0–100 scores/);
+});
