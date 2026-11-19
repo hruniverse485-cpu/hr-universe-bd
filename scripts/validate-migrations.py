@@ -157,7 +157,11 @@ try:
     ).fetchone()[0] != 2:
         fail("Cancellation did not release all reservation ledger rows")
 
-    audit_columns = {row[1] for row in db.execute("PRAGMA table_info(supplier_offer_audit)")}\n    if not {"entity_type", "entity_id", "action", "actor", "before_json", "after_json"} <= audit_columns:\n        fail("Supplier offer audit table is missing required fields")\n\n    violations = db.execute("PRAGMA foreign_key_check").fetchall()
+    audit_columns = {row[1] for row in db.execute("PRAGMA table_info(supplier_offer_audit)")}
+    if not {"entity_type", "entity_id", "action", "actor", "before_json", "after_json"} <= audit_columns:
+        fail("Supplier offer audit table is missing required fields")
+
+    violations = db.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
         fail(f"Foreign key violations: {violations[:5]}")
 
