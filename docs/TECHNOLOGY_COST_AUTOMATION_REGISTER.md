@@ -1,6 +1,6 @@
 # HR UNIVERSE — Technology, Cost & Automation Register
 
-Last reviewed: 2026-11-18
+Last reviewed: 2026-11-20
 Repository: `hruniverse485-cpu/hr-universe-bd`
 Branch: `feature/global-hybrid-rebuild`
 
@@ -77,10 +77,12 @@ For every provider/service record:
 
 ## Current verified implementation status
 
-- Existing Worker, D1 schema/migrations, GitHub Actions validation, and 11 lightweight Worker API boundary tests are present on the feature branch.
-- Current backend order path is Bangladesh/BDT/COD only.
-- The current storefront is still a demo/legacy storefront; catalog is not yet fully API-backed.
-- Admin authentication, customer accounts, international payment, supplier/warehouse integrations, complete refund automation, AI, voice control, and automated issue remediation are not production-ready.
+- The Feature branch contains the Cloudflare Worker API, D1 schema through ordered migration 0015, GitHub Actions validation, and a substantial Node regression suite plus disposable SQLite migration validation.
+- The current storefront is an original responsive discovery/catalog experience backed by live `/api/products` and `/api/categories` responses for BD/BDT. It does not use hard-coded demo products or a fake-order fallback. Customer checkout is intentionally not exposed in this iteration.
+- The backend currently accepts Bangladesh/BDT/COD orders only; international checkout remains disabled until payment, settlement, fulfillment, returns, tax/compliance, and support are verified for a market.
+- Owner-only operational dashboards exist for delivery, partner directory, COD reconciliation/returns, physical inventory verification, sourcing, and catalog/category management. These are Feature-branch code and are not confirmed live in production.
+- Product image upload is not implemented. The current Worker has no R2 binding; a private, approval-gated image storage design is documented in `docs/PRODUCT_IMAGE_STORAGE_DESIGN.md`.
+- CJ API authentication/sync, product ingestion, image pipeline, customer accounts, international payment, supplier/warehouse live integrations, automated refunds, AI, voice control, and automated issue remediation are not production-ready.
 - No production deployment or live D1 migration has been verified.
 
 ## Next build sequence
@@ -97,3 +99,12 @@ For every provider/service record:
 ## Branch and approval rules
 
 All development stays on `feature/global-hybrid-rebuild`. Keep `main` unchanged until the owner explicitly approves merge. Never claim a feature is complete without implementation and verification evidence.
+
+
+## Zero-upfront-cost setup gate (2026-11-20)
+
+- Keep HR UNIVERSE in a no-deposit, no-upfront-payment posture while the owner prepares the required accounts.
+- Prefer free tiers and no-cost onboarding, but verify current official quotas, billing requirements, and overage behavior before enabling any service. A free signup must not be described as a free unlimited service.
+- Do not enable paid plans, add paid credits, place supplier orders, pay samples/deposits, or incur usage-based charges without explicit owner approval.
+- Do not create or bind a Cloudflare R2 bucket until the owner confirms the account/environment and approves the specific resource setup. Until then, keep product image upload disabled and do not fabricate product images or storage URLs.
+- CJ Dropshipping must use a separate HR UNIVERSE account registered with the business email. The existing account associated with Shafiq bhai remains untouched. Do not authorize the CJ API or store credentials until the owner completes the new account setup and explicitly approves the integration step.
