@@ -37,7 +37,7 @@ try:
         "product_prices", "order_items", "supplier_product_sources",
         "supplier_shipping_quotes", "supplier_sync_runs", "inventory_reservations",
         "supplier_variant_offers", "supplier_variant_shipping_quotes", "supplier_offer_audit",
-        "cod_reconciliation_entries", "order_return_inspections",
+        "cod_reconciliation_entries", "order_return_inspections", "inventory_verification_events",
     }
     actual_tables = {
         row[0] for row in db.execute(
@@ -118,6 +118,12 @@ try:
         pass
     db.execute("UPDATE orders SET delivery_status = 'RETURNED' WHERE id = 'cod-order'")
     db.execute("INSERT INTO order_return_inspections (id, order_id, parcel_condition, disposition, inspected_quantity, notes) VALUES ('return-inspection', 'cod-order', 'SEALED_INTACT', 'RESTOCK_CANDIDATE', 1, 'Package inspected')")
+    db.execute("INSERT INTO inventory_verification_events (id, inventory_id, previous_available_quantity, verified_physical_quantity, reserved_quantity, new_available_quantity, evidence_reference, verified_by) VALUES ('stock-verify-1', 'inv', 5, 5, 0, 5, 'count-sheet-1', 'OWNER')")
+    try:
+        db.execute("INSERT INTO inventory_verification_events (id, inventory_id, previous_available_quantity, verified_physical_quantity, reserved_quantity, new_available_quantity, evidence_reference, verified_by) VALUES ('stock-verify-duplicate', 'inv', 5, 5, 0, 5, 'count-sheet-1', 'OWNER')")
+        fail("Inventory verification must reject duplicate evidence for one inventory row")
+    except sqlite3.IntegrityError:
+        pass
 
     legacy_hash = db.execute(
         "SELECT idempotency_request_hash FROM orders WHERE id='order-a'"
