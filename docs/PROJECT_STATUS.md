@@ -79,6 +79,12 @@ The owner retains control of banking, payment credentials, legal declarations, p
 At every work session, record the current branch/head commit, changed files, test results, unresolved defects, blockers, and the next exact action. Never report a feature as complete without implementation and verification evidence.
 
 
+## New-product form reset correction (2026-11-20)
+
+- Starting a new product now calls the shared variant and price form reset functions. This clears any previously selected price ID, edit label and cancel state, preventing a later save from accidentally updating an old price record.
+- Added a regression assertion for the new-product reset path.
+- GitHub Actions run `44601438920` completed successfully on commit `9d54c0017d3b38b9a4904bcccd0b28bcb5c86408`: Worker syntax, all 117 Worker API tests, and ordered SQL migration validation passed.
+
 ## Active product editor guard (2026-11-20)
 
 - The owner catalog dashboard now disables product-detail form controls while the selected product is ACTIVE and explains that the product must be paused before editing. Pausing refreshes the editor and makes the fields editable again.
