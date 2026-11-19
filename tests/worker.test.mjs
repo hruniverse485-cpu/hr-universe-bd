@@ -91,6 +91,31 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.ok(sql.includes("available_quantity"));
   assert.deepEqual(values, ["-72 hours", "BD", "BDT", "-72 hours", "", "", "", 24]);
 });
+test("Product catalog honors a configured inventory freshness limit", async () => {
+  let values = [];
+  const DB = { prepare() { return { bind(...args) { values = args; return { all: async () => ({ results: [] }) }; } }; } };
+  const response = await worker.fetch(request("/api/products?country=BD&currency=BDT"), {
+    DB, HR_INVENTORY_MAX_AGE_HOURS: "24"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.inventory_max_age_hours, 24);
+  assert.equal(values.filter(value => value === "-24 hours").length, 2);
+});
+
+test("Owner inventory list returns stale flags using the configured freshness limit", async () => {
+  let sql = "";
+  let values = [];
+  const DB = { prepare(query) { sql = query; return { bind(...args) { values = args; return { all: async () => ({ results: [] }) }; } }; } };
+  const response = await worker.fetch(request("/api/admin/inventory/verification", "GET", undefined, { authorization: "Bearer owner-secret" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret", HR_INVENTORY_MAX_AGE_HOURS: "48"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.inventory_max_age_hours, 48);
+  assert.ok(sql.includes("AS is_stale"));
+  assert.deepEqual(values, ["-48 hours"]);
+});
 test("order endpoint rejects malformed JSON without creating an order", async () => {
   const response = await worker.fetch(
     request("/api/orders", "POST", "{not-json}", {
