@@ -198,3 +198,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - CI runs #101 and #102 passed on the request-binding implementation and regression tests; run #103 passed after the migration compatibility note update. Run #104 is expected for the latest migration-validator and canonicalization tests; do not treat this checkpoint as fully verified until it completes.
 - Current automated Worker suite contains 40 tests. These are mocked Worker/API tests plus disposable SQLite migration/trigger tests; they are not live Cloudflare D1 integration or real concurrent request tests.
 - No production D1 migration, deployment, payment activation, supplier order, or change to `main` occurred.
+
+
+## COD order-path regression coverage (2026-11-19)
+
+- Added mocked-D1 API-path tests that exercise a complete valid Bangladesh COD order request through server-side price lookup, verified-variant/stock checks, shipping lookup, request fingerprint persistence, and one atomic batch containing the order and line item.
+- Added a simulated stock-change race: when the atomic batch reports the inventory-reservation trigger error, the API must return HTTP 409 and must not report order success.
+- The first test run (#107) correctly exposed an incomplete test double: the mock did not implement D1's unbound `.first()` query form. The mock was corrected; no production Worker change was needed for that failure.
+- CI run [#108](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44538068667) passed Worker syntax, all 42 Node tests, and the complete ordered migration validator including reservation/cancellation triggers and migration 0009 idempotency schema checks.
+- These are mocked-D1 request-path tests plus real SQLite migration/trigger tests. They still do not replace live Cloudflare D1 integration, simultaneous network requests, or production load tests.
+- No live D1 changes, deployments, payments, supplier orders, or changes to `main`.
