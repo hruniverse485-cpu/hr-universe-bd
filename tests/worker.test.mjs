@@ -1484,6 +1484,7 @@ test("Catalog product activation rejects future-dated stock verification", async
   const readiness=calls.find(x=>x.sql.includes("SELECT 1 AS ok FROM products"));
   assert.ok(readiness);
   assert.match(readiness.sql,/datetime\(i\.verified_at\)<=CURRENT_TIMESTAMP/);
+  assert.match(readiness.sql,/pp\.variant_id IS NULL/);
 });
 
 test("Inventory verification dashboard marks future timestamps as stale", async () => {
