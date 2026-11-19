@@ -309,3 +309,12 @@ At every work session, record the current branch/head commit, changed files, tes
 - Variant edit pre-fills SKU, display name and attributes and preserves the existing variant ID. Cancel resets the form. Active variants must be paused first, and the parent product must be non-active before variant edits.
 - Added dashboard-script assertions for variant edit controls, ID preservation and cancel behavior. Feature branch only; no production data, schema, accounts or external services changed.
 - CI and Node test execution have not yet been confirmed for this change.
+
+
+## Catalog category editing usability fix (2026-11-20)
+
+- Added an Edit action for inactive categories in the owner catalog dashboard. The form pre-fills the saved category ID, name, slug, parent and sort order; saving calls the existing audited `save_category` update path rather than creating a duplicate.
+- The current category cannot be selected as its own parent. Active categories remain read-only until deactivated, matching the backend safety rule. Cancel clears edit state.
+- Added regression assertions for the edit action, form ID binding, cancel control and audited save operation.
+- Changes are limited to `public/admin-catalog.html`, `tests/worker.test.mjs` and this status record on `feature/global-hybrid-rebuild`. No production data, database schema, Cloudflare resource, supplier account or paid service was changed.
+- CI and Node test execution have not yet been confirmed for this change.
