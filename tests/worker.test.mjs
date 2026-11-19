@@ -324,3 +324,10 @@ test("supplier offer mutations commit together with complete before/after audit 
     assert.ok(workerSource.includes(operation), "missing audited operation " + operation);
   }
 });
+
+
+test("supplier shipping quote identity cannot be reassigned across offers or destinations", () => {
+  assert.match(workerSource, /Shipping quote identity is immutable/);
+  assert.match(workerSource, /before\.offer_id !== offerId/);
+  assert.match(workerSource, /before\.destination_country_code !== destination/);
+});
