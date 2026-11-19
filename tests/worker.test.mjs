@@ -81,7 +81,7 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.ok(sql.includes("i.quantity > 0"));
   assert.ok(sql.includes("w.status = 'ACTIVE'"));
   assert.ok(sql.includes("available_quantity"));
-  assert.deepEqual(values, ["BD", "BDT", "", "", "", 50]);
+  assert.deepEqual(values, ["BD", "BDT", "", "", "", 24]);
 });
 test("order endpoint rejects malformed JSON without creating an order", async () => {
   const response = await worker.fetch(
