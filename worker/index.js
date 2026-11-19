@@ -346,7 +346,8 @@ async function manageSupplierOffers(request, env) {
       await audit("OFFER",id,"OFFER_VERIFIED",before,after);
       return json({success:true,offer:after});
     }
-\n    if (data.operation === "transition") {
+
+    if (data.operation === "transition") {
       const id=text(data.offer_id,100), target=text(data.approval_status,30).toUpperCase();
       if (!id || !["TERMS_REVIEW","SAMPLE_REQUIRED","QUALITY_APPROVED","DESTINATION_APPROVED","ACTIVE","PAUSED","REJECTED"].includes(target))
         return json({success:false,error:"Invalid offer transition"},400);
