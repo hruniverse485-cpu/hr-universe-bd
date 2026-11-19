@@ -226,3 +226,14 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added route tests for missing/incorrect owner authentication, successful pending cancellation, refusal of confirmed orders, and invalid order identifiers.
 - GitHub Actions run [#111](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44546803301) passed: Worker syntax, Node API tests, and all ordered SQL migration validation.
 - This is a Feature-branch code/test milestone only. It has not been deployed; no production database was changed. Customer self-service cancellation, confirmed-order exceptions, supplier cancellation, and refund handling remain unimplemented.
+
+
+## Owner catalog management foundation (2026-11-19)
+
+- Added migration 0014 with an append-only `catalog_admin_audit` table.
+- Added owner-token-protected `GET/POST /api/admin/catalog` for catalog listing, draft product creation/editing, draft variant creation/editing, market price creation (PENDING by default), and audited status changes.
+- Added private `public/admin-catalog.html` owner workspace with product, variant and price views. Owner token is held in page memory only; no local/session storage is used.
+- Product activation is gated by active category and market, fresh verified Bangladesh warehouse inventory, an active variant, and a valid active BD/BDT price. Price activation validates market, category, variant relationship and validity window.
+- Product and variant detail edits require pausing an active parent/product. Price rows are created as PENDING and require an explicit review/activation action. Mutations are paired with audit rows in a D1 batch; the audit insert is conditional on the preceding write having changed exactly one row.
+- This is Feature-branch code only. Migration 0014 is not applied to production; dashboard is not live. CI validation for the latest catalog changes is pending.
+- Remaining: run CI, extend migration validator with catalog audit integrity checks, add category management and product image handling, improve admin form edit workflow, and integrate catalog with a complete customer storefront/cart/checkout. No deployment or external supplier action occurred.
