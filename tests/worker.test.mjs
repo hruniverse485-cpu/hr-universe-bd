@@ -975,6 +975,51 @@ test("courier service areas reject invalid service type and unsupported methods"
   assert.equal(denied.status, 405);
 });
 
+test("local supplier profile update is owner-only and forces unverified state", async () => {
+  const response = await worker.fetch(request("/api/admin/partners/supplier-profiles", "PUT", JSON.stringify({
+    supplier_id: "s-1", verification_status: "VERIFIED", district: "Dhaka"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB: { prepare(sql) { return { bind() { return { first: async () => ({ id: "s-1" }), run: async () => ({ success: true }) }; } }; } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.supplier_profile.verification_status, "UNVERIFIED");
+  assert.equal(payload.supplier_profile.last_stock_verified_at, null);
+});
+
+test("local supplier profile rejects invalid scores and unauthorized access", async () => {
+  const denied = await worker.fetch(request("/api/admin/partners/supplier-profiles", "PUT", "{}", { authorization: "Bearer wrong" }), {
+    DB: {}, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(denied.status, 401);
+  const invalid = await worker.fetch(request("/api/admin/partners/supplier-profiles", "PUT", JSON.stringify({
+    supplier_id: "s-1", quality_score: 101
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB: {}, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(invalid.status, 400);
+});
+
+test("local supplier quote is saved pending and stock unverified", async () => {
+  const calls = [];
+  const DB = { prepare(sql) { calls.push(sql); return { bind() { return {
+    first: async () => ({ id: "found" }), run: async () => ({ success: true })
+  }; } }; } };
+  const response = await worker.fetch(request("/api/admin/partners/supplier-quotes", "POST", JSON.stringify({
+    supplier_id: "s-1", product_id: "p-1", unit_cost_minor: 500,
+    available_quantity: 12, minimum_order_quantity: 2, currency_code: "BDT",
+    quote_status: "VERIFIED", stock_verified_at: "2026-11-19"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.quote.quote_status, "PENDING");
+  assert.equal(payload.quote.stock_verified_at, null);
+  assert.match(calls[calls.length - 1], /'PENDING', NULL/);
+});
+
 test("courier rate cards require owner authentication", async () => {
   const response = await worker.fetch(request("/api/admin/partners/courier-rates"), {
     DB: { prepare() { throw new Error("Database must not be queried"); } },
