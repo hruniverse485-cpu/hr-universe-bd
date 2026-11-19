@@ -2021,7 +2021,7 @@ async function manageBangladeshCodLedger(request, env) {
           SELECT 1 FROM orders o WHERE o.id = ? AND o.delivery_status = 'DELIVERED'
             AND o.total_minor >= ? + COALESCE((
               SELECT SUM(amount_minor) FROM cod_reconciliation_entries
-              WHERE order_id = o.id AND entry_type = 'CUSTOMER_COD_COLLECTED'
+              WHERE order_id = o.id AND entry_type = 'CUSTOMER_COD_COLLECTED' AND status <> 'DISPUTED'
             ), 0)
         )`;
         insertValues.push(orderId, amount);
@@ -2030,10 +2030,10 @@ async function manageBangladeshCodLedger(request, env) {
         // check is part of the insert to avoid concurrent over-settlement.
         insertSql += ` WHERE ? + COALESCE((
           SELECT SUM(amount_minor) FROM cod_reconciliation_entries
-          WHERE order_id = ? AND entry_type = 'COURIER_SETTLEMENT_RECEIVED'
+          WHERE order_id = ? AND entry_type = 'COURIER_SETTLEMENT_RECEIVED' AND status <> 'DISPUTED'
         ), 0) <= COALESCE((
           SELECT SUM(amount_minor) FROM cod_reconciliation_entries
-          WHERE order_id = ? AND entry_type = 'CUSTOMER_COD_COLLECTED'
+          WHERE order_id = ? AND entry_type = 'CUSTOMER_COD_COLLECTED' AND status = 'VERIFIED'
         ), 0)`;
         insertValues.push(amount, orderId, orderId);
       } else {
