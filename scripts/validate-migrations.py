@@ -36,7 +36,7 @@ try:
         "warehouses", "inventory", "shipping_methods", "shipping_rates",
         "product_prices", "order_items", "supplier_product_sources",
         "supplier_shipping_quotes", "supplier_sync_runs", "inventory_reservations",
-        "supplier_variant_offers", "supplier_variant_shipping_quotes",
+        "supplier_variant_offers", "supplier_variant_shipping_quotes", "supplier_offer_audit",
     }
     actual_tables = {
         row[0] for row in db.execute(
@@ -157,7 +157,7 @@ try:
     ).fetchone()[0] != 2:
         fail("Cancellation did not release all reservation ledger rows")
 
-    violations = db.execute("PRAGMA foreign_key_check").fetchall()
+    audit_columns = {row[1] for row in db.execute("PRAGMA table_info(supplier_offer_audit)")}\n    if not {"entity_type", "entity_id", "action", "actor", "before_json", "after_json"} <= audit_columns:\n        fail("Supplier offer audit table is missing required fields")\n\n    violations = db.execute("PRAGMA foreign_key_check").fetchall()
     if violations:
         fail(f"Foreign key violations: {violations[:5]}")
 
