@@ -1980,6 +1980,7 @@ async function manageBangladeshCodLedger(request, env) {
       return json({ success: false, error: "Invalid JSON request" }, 400);
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "Invalid ledger request" }, 400);
+    if (request.method !== "POST" && request.method !== "PATCH") return json({ success: false, error: "Method not allowed" }, 405);
 
     if (request.method === "POST") {
       const orderId = text(data.order_id, 100);
