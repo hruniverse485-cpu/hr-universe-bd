@@ -83,7 +83,7 @@ tbody tr{cursor:pointer}tbody tr:hover{background:#f7f9fc}tbody tr.selected{back
       '<td><strong>'+esc(row.product_name)+'</strong><br><span class="muted">'+esc(row.variant_name||row.sku)+' · '+esc(row.sku)+'</span></td>'+
       '<td>'+esc(row.warehouse_name)+(row.city?' · '+esc(row.city):'')+'</td>'+
       '<td><span class="status">'+esc(row.available_quantity)+'</span></td>'+
-      '<td>'+esc(row.reserved_quantity)+'</td><td>'+esc(date(row.verified_at))+'</td></tr>'
+      '<td>'+esc(row.reserved_quantity)+'</td><td>'+esc(date(row.verified_at))+(row.is_stale?'<br><span class="status">STALE</span>':'')+'</td></tr>'
     ).join("") : '<tr><td colspan="5" class="muted">No Bangladesh inventory rows found.</td></tr>';
   }
   async function load() {
