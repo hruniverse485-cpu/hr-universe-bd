@@ -48,20 +48,19 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 - Added `tests/worker.test.mjs` and wired it into GitHub Actions with `node --test`.
 - The tests exercise API boundary behavior with lightweight Worker environment mocks; they do not yet exercise a complete D1-backed order transaction or browser checkout.
 - Replaced the hard-coded demo storefront with an API-backed discovery/catalog experience. Added regression tests asserting that the storefront fetches live products, contains no hard-coded demo catalog, never claims a failed request created an order, and includes responsive browsing/search/saved-product behavior.
-- The order handler checks stock before creating the order but does not reserve/decrement inventory. Concurrent checkout requests could therefore oversell stock. Do not treat current inventory checking as safe stock reservation until that workflow is implemented and tested.
+- The order handler uses migration 0006 database triggers to reserve verified Bangladesh warehouse stock when each `order_items` row is inserted in the same atomic D1 batch as its order. Insufficient stock aborts the batch; cancellation/rejection releases reserved units. Do not enable storefront checkout until the remaining payment, market, and end-to-end prerequisites are met.
 
 ## Next implementation sequence
 
-1. Run and fix the new CI checks; inspect the exact migration history and D1 deployment configuration.
-2. Add backend tests for product listing, country/currency gating, pricing, stock, shipping, COD order creation, duplicate requests, and malformed inputs.
-3. Extend the API-backed premium storefront with real category metadata, verified product imagery/details, and accessibility/browser checks; keep checkout disabled until stock reservation and market/payment prerequisites are met.
-4. Implement authentication and role-based authorization before exposing any admin or customer-private endpoints.
-5. Implement customer accounts, cart, order history/tracking, and support workflows.
-6. Implement supplier/warehouse/shipping integrations with verified stock, delivery estimates, and landed-cost calculation.
-7. Implement returns/refunds with owner approvals, supplier recovery tracking, audit records, and cash-flow controls.
-8. Implement AI shopping, product image search, sourcing workflows, and the owner command center behind appropriate permissions.
-9. Verify payment provider eligibility and settlement for each country; activate one country at a time.
-10. Complete security, privacy, performance, backup, recovery, and end-to-end acceptance testing before production launch.
+1. Extend backend integration coverage for full COD order creation, pricing, shipping, idempotent retries, and concurrent reservation scenarios.
+2. Extend the API-backed premium storefront with real category metadata, verified product imagery/details, and accessibility/browser checks; keep checkout disabled until payment and market prerequisites are met.
+3. Implement authentication and role-based authorization before exposing any admin or customer-private endpoints.
+4. Implement customer accounts, cart, order history/tracking, and support workflows.
+5. Implement supplier/warehouse/shipping integrations with verified stock, delivery estimates, and landed-cost calculation.
+6. Implement returns/refunds with owner approvals, supplier recovery tracking, audit records, and cash-flow controls.
+7. Implement AI shopping, product image search, sourcing workflows, and the owner command center behind appropriate permissions.
+8. Verify payment provider eligibility and settlement for each country; activate one country at a time.
+9. Complete security, privacy, performance, backup, recovery, and end-to-end acceptance testing before production launch.
 
 ## Owner approvals required
 
@@ -116,3 +115,15 @@ At every work session, record the current branch/head commit, changed files, tes
 - Supplier outreach must explain HR UNIVERSE's long-term growth ambition and interest in building a durable partnership as the business scales, without promising guaranteed future volume, exclusivity, or spend.
 - Ask what concrete support is available to a new/small business now and what additional support can be earned as real order volume grows: onboarding, sourcing, competitive pricing, payment terms/cash-flow flexibility, tracking, returns, account support, scalable fulfillment, volume pricing, and branded/white-label packaging.
 - Record supplier answers and written evidence; do not label future benefits as confirmed until the supplier confirms terms. Preferred-partner status must be earned through measured performance.
+
+
+## Secure order and inventory reservation milestone (2026-11-19)
+
+- Added ordered migration `0006_atomic_inventory_reservations.sql` with an auditable inventory reservation ledger.
+- Database triggers reserve verified, active Bangladesh warehouse stock when `order_items` rows are inserted. The order row and all order items are written through one D1 batch; a failed stock reservation aborts the batch, preventing an order from being partially created.
+- Each order line is allocated to one verified active Bangladesh warehouse inventory row. Variant-backed inventory is required because the current base inventory schema requires a non-null variant ID; product-only inventory is not silently treated as available.
+- Order cancellation/rejection restores all reserved quantities and marks reservation ledger rows released. Repeated terminal status changes do not release stock twice.
+- The order API now requires a stable `Idempotency-Key` header or `idempotency_key` value, returns an existing order for retries, and handles concurrent duplicate-key collisions.
+- Stock preflight is informational only; database triggers are authoritative. If stock changes between preflight and commit, the D1 batch fails and the API returns HTTP 409.
+- CI run [#31](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44432206502) succeeded for commit `b0a166393ac387a20313c1f179a2ed5a4730bc8f`: Worker syntax, 17 Node tests, migration application, reservation/depletion, insufficient-stock rollback, cancellation release, and no-double-release checks passed.
+- This is code/schema validation on disposable SQLite plus Worker route tests. Migration 0006 has **not** been applied to production D1; no deployment occurred. Storefront checkout remains disabled pending payment/market and end-to-end verification.
