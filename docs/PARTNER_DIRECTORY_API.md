@@ -69,3 +69,11 @@ The API verifies the courier and currency exist, validates non-negative integer 
 - `GET /api/admin/partners/supplier-quotes` lists captured quotes, optionally filtered by supplier or product.
 - `POST /api/admin/partners/supplier-quotes` records a quote as `PENDING`, never as verified; stock verification remains null. Product/variant ownership and configured currency are checked.
 - All endpoints require the owner bearer token. They do not contact suppliers, purchase goods or change public catalogue availability.
+
+
+## AI recommendation queue
+
+- `GET /api/admin/partners/recommendations` lists recommendation records; optional `status` filter.
+- `POST /api/admin/partners/recommendations` stores a structured recommendation as `PENDING_REVIEW`, regardless of caller-supplied status.
+- `PATCH /api/admin/partners/recommendations` records owner review as `APPROVED` or `REJECTED`. Approval is a review record only; it does not execute any operational action.
+- Confidence is optional and constrained to 0–1. Evidence summary is mandatory. No recommendation can send messages, book couriers, order goods or pay money.
