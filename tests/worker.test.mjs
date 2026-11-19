@@ -230,7 +230,7 @@ test("supplier offer management rejects unauthorized requests before database ac
 });
 
 test("supplier offer management rejects unsupported methods after authentication", async () => {
-  const response = await worker.fetch(request("/api/admin/sourcing/offers", "GET", undefined, {
+  const response = await worker.fetch(request("/api/admin/sourcing/offers", "PATCH", undefined, {
     authorization: "Bearer owner-secret"
   }), { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" });
   assert.equal(response.status, 405);
@@ -263,4 +263,28 @@ test("supplier offer admin exposes quote and verification evidence operations", 
   assert.match(workerSource, /data\.operation === "verify_offer"/);
   assert.match(workerSource, /Cross-currency quotes require FX evidence/);
   assert.match(workerSource, /Four 0–100 scores/);
+});
+
+
+test("supplier offer listing requires owner token and returns records", async () => {
+  const response = await worker.fetch(request("/api/admin/sourcing/offers?limit=10", "GET", undefined, {
+    authorization: "Bearer owner-secret"
+  }), {
+    HR_ADMIN_API_TOKEN: "owner-secret",
+    DB: { prepare(sql) {
+      assert.match(sql, /FROM supplier_variant_offers/);
+      return { bind(limit) { assert.equal(limit, 10); return { all: async () => ({ results: [{ id: "offer-1" }] }) }; } };
+    } }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.offers[0].id, "offer-1");
+});
+
+test("private supplier dashboard does not persist owner token", () => {
+  const page = readFileSync(new URL("../public/admin-sourcing.html", import.meta.url), "utf8");
+  assert.match(page, /autocomplete="off"/);
+  assert.match(page, /ownerToken=""/);
+  assert.doesNotMatch(page, /localStorage|sessionStorage/);
+  assert.match(page, /\/api\/admin\/sourcing\/offers/);
 });
