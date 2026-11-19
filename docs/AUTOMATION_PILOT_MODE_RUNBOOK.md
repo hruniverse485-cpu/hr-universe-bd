@@ -12,6 +12,9 @@ Pilot Mode is a controlled owner-operated trial of the Bangladesh courier and lo
 - Partner contact records, defaulting to `UNVERIFIED` and non-primary.
 - Internal interaction and follow-up log. Records are internal notes; no outbound communication occurs.
 - Courier rate-card register. Newly entered rates are forced to `UNVERIFIED`.
+- Courier service-area capture. Newly entered coverage is forced inactive and unverified.
+- Local supplier capability profile create/update and local quote capture. Profiles remain unverified; quotes remain pending and stock freshness is cleared.
+- Partner dashboard forms for service areas, supplier profiles and quotes; no external actions are triggered.
 - Existing supplier sourcing offer control page remains separate at `/admin-sourcing.html`.
 - Worker API authentication uses the server-side `HR_ADMIN_API_TOKEN` secret.
 
@@ -40,6 +43,7 @@ Pilot Mode is a controlled owner-operated trial of the Bangladesh courier and lo
 ## Pilot readiness gates still outstanding
 
 - Dedicated review/verification API and UI for partner contacts, service areas and courier rate cards.
+- Independent supplier profile/contact/quote evidence review and verification workflow.
 - Supplier local profile create/update and local quote capture APIs/UI.
 - Courier service-area capture and verification.
 - Rate-card validity/evidence checks and courier comparison engine.
