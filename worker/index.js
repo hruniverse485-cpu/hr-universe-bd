@@ -493,6 +493,8 @@ async function listProducts(request, env) {
   const limit = Number.isSafeInteger(limitRaw)
     ? Math.min(50, Math.max(1, limitRaw))
     : 24;
+  const inventoryMaxAgeHours = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 720) || 72;
+  const inventoryMaxAgeModifier = `-${inventoryMaxAgeHours} hours`;
 
   if (
     !/^[A-Z]{2}$/.test(country) ||
@@ -531,7 +533,9 @@ async function listProducts(request, env) {
           JOIN warehouses w ON w.id = i.warehouse_id
           WHERE pv.product_id = p.id AND pv.status = 'ACTIVE'
             AND w.country_code = co.country_code AND w.status = 'ACTIVE'
-            AND i.verified_at IS NOT NULL AND i.quantity > 0
+            AND i.verified_at IS NOT NULL
+            AND datetime(i.verified_at) >= datetime('now', ?)
+            AND i.quantity > 0
         ) AS available_quantity,
 
         (
@@ -592,6 +596,8 @@ async function listProducts(request, env) {
     `).bind(
       country,
       currency,
+      inventoryMaxAgeModifier,
+      inventoryMaxAgeModifier,
       q,
       q,
       q,
@@ -602,6 +608,7 @@ async function listProducts(request, env) {
       success: true,
       country,
       currency,
+      inventory_max_age_hours: inventoryMaxAgeHours,
       count: result.results.length,
       products: result.results
     });
@@ -1978,6 +1985,8 @@ async function manageInventoryVerification(request, env) {
         COALESCE((SELECT SUM(r.quantity) FROM inventory_reservations r
           WHERE r.inventory_id = i.id AND r.status = 'RESERVED'), 0) AS reserved_quantity,
         i.verified_at, i.updated_at,
+        CASE WHEN i.verified_at IS NULL OR datetime(i.verified_at) < datetime('now', ?)
+          THEN 1 ELSE 0 END AS is_stale,
         (SELECT e.created_at FROM inventory_verification_events e
           WHERE e.inventory_id = i.id ORDER BY e.created_at DESC LIMIT 1) AS last_verification_event_at
         FROM inventory i
@@ -1985,7 +1994,9 @@ async function manageInventoryVerification(request, env) {
         JOIN product_variants pv ON pv.id = i.variant_id AND pv.product_id = i.product_id
         JOIN warehouses w ON w.id = i.warehouse_id
         WHERE w.country_code = 'BD'
-        ORDER BY i.verified_at IS NULL DESC, i.updated_at DESC LIMIT 200`).all();
+        ORDER BY is_stale DESC, i.updated_at DESC LIMIT 200`).bind(
+          `-${integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 720) || 72} hours`
+        ).all();
       return json({ success: true, inventory: result.results || [] });
     }
     if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
