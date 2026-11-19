@@ -1371,7 +1371,7 @@ async function managePartnerInteractions(request, env) {
     return json({ success: false, error: "partner_type, partner_id, valid interaction_type and summary are required" }, 400);
   }
   const followUpAt = text(data.follow_up_at, 40) || null;
-  if (followUpAt && !/^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2}(?::\\d{2})?(?:Z|[+-]\\d{2}:?\\d{2})?)?$/.test(followUpAt)) {
+  if (followUpAt && !/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(followUpAt)) {
     return json({ success: false, error: "follow_up_at must be an ISO date or datetime" }, 400);
   }
 
