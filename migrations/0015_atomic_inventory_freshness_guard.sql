@@ -32,7 +32,7 @@ WHEN NEW.fulfillment_type = 'LOCAL_WAREHOUSE'
      AND i.quantity >= NEW.quantity
  )
 BEGIN
-  SELECT RAISE(ABORT, 'Insufficient fresh verified stock for atomic reservation');
+  SELECT RAISE(ABORT, 'Insufficient verified stock for atomic reservation (fresh verification required)');
 END;
 
 CREATE TRIGGER trg_order_item_reserve_stock_after
