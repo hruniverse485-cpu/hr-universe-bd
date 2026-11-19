@@ -673,3 +673,95 @@ test("COD order creation maps an atomic stock race to conflict without reporting
   assert.match(payload.error, /stock changed while placing/i);
   assert.equal(DB.calls.filter(call => call.type === "batch").length, 1);
 });
+
+
+test("courier partner directory requires configured owner authentication", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/partners/couriers"),
+    { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 401);
+});
+
+test("courier partner directory does not query database for an invalid owner token", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/partners/couriers"),
+    { DB: { prepare() { throw new Error("Database must not be queried"); } }, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 401);
+});
+
+test("courier partner directory lists partner records for the owner", async () => {
+  const DB = {
+    prepare(sql) {
+      assert.match(sql, /FROM courier_partners/);
+      return { all: async () => ({ results: [{ partner_code: "PATHAO", onboarding_status: "RESEARCH" }] }) };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/admin/partners/couriers", "GET", undefined, { authorization: "Bearer owner-secret" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.partners[0].partner_code, "PATHAO");
+});
+
+test("courier partner creation starts unverified and cannot self-activate or connect an API", async () => {
+  let statement = "";
+  let values = [];
+  const DB = {
+    prepare(sql) {
+      statement = sql;
+      return { bind(...args) { values = args; return { run: async () => ({ success: true }) }; } };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/admin/partners/couriers", "POST", JSON.stringify({
+      partner_code: "PATHAO",
+      partner_name: "Pathao Courier",
+      website_url: "https://pathao.com",
+      onboarding_status: "ACTIVE",
+      api_status: "CONNECTED",
+      cod_supported: true
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.partner.onboarding_status, "RESEARCH");
+  assert.equal(payload.partner.api_status, "NOT_ASSESSED");
+  assert.match(statement, /'RESEARCH', 'NOT_ASSESSED'/);
+  assert.equal(values[1], "PATHAO");
+});
+
+test("courier partner creation validates code and HTTPS website URL", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/partners/couriers", "POST", JSON.stringify({
+      partner_code: "bad code",
+      partner_name: "Courier",
+      website_url: "http://example.com"
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 400);
+});
+
+test("courier partner directory rejects unsupported methods", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/partners/couriers", "DELETE", undefined, { authorization: "Bearer owner-secret" }),
+    { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 405);
+});
+
+test("partner network migration keeps courier partners in research until verified", () => {
+  const migration = readFileSync(
+    new URL("../migrations/0011_bangladesh_partner_network.sql", import.meta.url),
+    "utf8"
+  );
+  assert.match(migration, /onboarding_status TEXT NOT NULL DEFAULT 'RESEARCH'/);
+  assert.match(migration, /api_status TEXT NOT NULL DEFAULT 'NOT_ASSESSED'/);
+  assert.match(migration, /verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED'/);
+  assert.match(migration, /partner_ai_recommendations/);
+});
