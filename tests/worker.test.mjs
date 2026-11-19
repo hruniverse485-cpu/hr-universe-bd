@@ -1366,8 +1366,8 @@ test("Return inspection quantity cap is enforced atomically by the insert", asyn
     DB, HR_ADMIN_API_TOKEN: "owner-secret"
   });
   assert.equal(response.status, 409);
-  assert.match(insertSql, /SUM\\(inspected_quantity\\)/);
-  assert.match(insertSql, /SUM\\(oi\\.quantity\\)/);
+  assert.match(insertSql, /SUM\(inspected_quantity\)/);
+  assert.match(insertSql, /SUM\(oi\.quantity\)/);
 });
 test("Damaged returned parcels cannot be marked as restock candidates", async () => {
   const DB = {
