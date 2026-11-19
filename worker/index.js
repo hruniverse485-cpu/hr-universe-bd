@@ -1317,6 +1317,86 @@ async function createCodOrder(request, env) {
 }
 
 
+async function managePartnerRecommendations(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const status = text(url.searchParams.get("status"), 30).toUpperCase();
+    const allowed = ["PENDING_REVIEW","APPROVED","REJECTED","EXPIRED","EXECUTED"];
+    if (status && !allowed.includes(status)) return json({ success: false, error: "Invalid recommendation status" }, 400);
+    try {
+      const query = `SELECT id, recommendation_type, order_id, partner_type, partner_id,
+        recommendation_json, confidence_score, evidence_summary, status, reviewed_by,
+        reviewed_at, created_at FROM partner_ai_recommendations` +
+        (status ? " WHERE status = ?" : "") + " ORDER BY created_at DESC LIMIT 200";
+      const result = await env.DB.prepare(query).bind(...(status ? [status] : [])).all();
+      return json({ success: true, recommendations: result.results || [] });
+    } catch (error) {
+      console.error("Partner recommendation listing failed:", error);
+      return json({ success: false, error: "Unable to load partner recommendations" }, 500);
+    }
+  }
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 15000) return json({ success: false, error: "Request body is too large" }, 413);
+    data = JSON.parse(raw);
+  } catch { return json({ success: false, error: "Invalid JSON body" }, 400); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "A JSON object is required" }, 400);
+  if (request.method === "POST") {
+    const type = text(data.recommendation_type, 30).toUpperCase();
+    const allowed = ["COURIER_SELECTION","SUPPLIER_SELECTION","FOLLOW_UP","SLA_ALERT","COD_VARIANCE","OTHER"];
+    const evidence = text(data.evidence_summary, 4000);
+    let recommendation;
+    try {
+      recommendation = typeof data.recommendation_json === "string" ? JSON.parse(data.recommendation_json) : data.recommendation_json;
+    } catch { return json({ success: false, error: "recommendation_json must contain valid JSON" }, 400); }
+    if (!allowed.includes(type) || !evidence || !recommendation || typeof recommendation !== "object" || Array.isArray(recommendation)) {
+      return json({ success: false, error: "A valid recommendation type, JSON object and evidence summary are required" }, 400);
+    }
+    const confidence = data.confidence_score == null || data.confidence_score === "" ? null : Number(data.confidence_score);
+    if (confidence !== null && (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)) {
+      return json({ success: false, error: "confidence_score must be between 0 and 1" }, 400);
+    }
+    const partnerType = text(data.partner_type, 20).toUpperCase() || null;
+    if (partnerType && !["COURIER","SUPPLIER"].includes(partnerType)) return json({ success: false, error: "partner_type must be COURIER or SUPPLIER" }, 400);
+    const id = crypto.randomUUID();
+    try {
+      await env.DB.prepare(`INSERT INTO partner_ai_recommendations (
+        id, recommendation_type, order_id, partner_type, partner_id,
+        recommendation_json, confidence_score, evidence_summary, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_REVIEW')`)
+        .bind(id, type, text(data.order_id, 100) || null, partnerType,
+          text(data.partner_id, 100) || null, JSON.stringify(recommendation), confidence, evidence).run();
+      return json({ success: true, message: "Recommendation saved to the pending review queue. No operational action was executed.", recommendation: { id, status: "PENDING_REVIEW" } }, 201);
+    } catch (error) {
+      console.error("Partner recommendation save failed:", error);
+      return json({ success: false, error: "Unable to save partner recommendation" }, 500);
+    }
+  }
+  if (request.method === "PATCH") {
+    const id = text(data.id, 100);
+    const status = text(data.status, 20).toUpperCase();
+    if (!id || !["APPROVED","REJECTED"].includes(status)) return json({ success: false, error: "Recommendation id and APPROVED or REJECTED status are required" }, 400);
+    try {
+      const result = await env.DB.prepare(`UPDATE partner_ai_recommendations
+        SET status = ?, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status = 'PENDING_REVIEW'`)
+        .bind(status, text(env.HR_ADMIN_OWNER_LABEL, 100) || "OWNER", id).run();
+      if (!result.meta || result.meta.changes !== 1) return json({ success: false, error: "Pending recommendation not found or already reviewed" }, 409);
+      return json({ success: true, message: "Recommendation review recorded. Approval does not execute a booking, purchase, message or payment.", recommendation: { id, status } });
+    } catch (error) {
+      console.error("Partner recommendation review failed:", error);
+      return json({ success: false, error: "Unable to review recommendation" }, 500);
+    }
+  }
+  return json({ success: false, error: "Method not allowed" }, 405);
+}
+
 async function manageCourierServiceAreas(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
@@ -1890,6 +1970,7 @@ export default {
 
     if (path === "/api/admin/partners/suppliers") return listLocalSuppliers(request, env);
 
+    if (path === "/api/admin/partners/recommendations") return managePartnerRecommendations(request, env);
     if (path === "/api/admin/partners/service-areas") return manageCourierServiceAreas(request, env);
     if (path === "/api/admin/partners/supplier-profiles") return manageLocalSupplierProfiles(request, env);
     if (path === "/api/admin/partners/supplier-quotes") return manageLocalSupplierQuotes(request, env);
