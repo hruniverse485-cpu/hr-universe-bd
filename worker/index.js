@@ -2119,6 +2119,8 @@ export default {
 
     if (path === "/api/admin/orders/cancel") return cancelPendingOrder(request, env);
 
+    if (path === "/api/admin/orders/delivery") return manageBangladeshCodDelivery(request, env);
+
     if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
 
     if (path === "/api/admin/partners/couriers") return manageCourierPartners(request, env);
