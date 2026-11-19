@@ -304,7 +304,49 @@ async function manageSupplierOffers(request, env) {
       await audit("OFFER",id,before?"OFFER_UPDATED":"OFFER_CREATED",before,after);
       return json({success:true,offer:after},before?200:201);
     }
-    if (data.operation === "transition") {
+
+    if (data.operation === "save_quote") {
+      const id=text(data.id,100)||crypto.randomUUID(), offerId=text(data.offer_id,100);
+      const destination=text(data.destination_country_code,2).toUpperCase();
+      const method=text(data.shipping_method_code,40).toUpperCase();
+      const cost=integer(data.shipping_cost_minor,0,Number.MAX_SAFE_INTEGER);
+      const currency=text(data.currency_code,3).toUpperCase();
+      const numerator=integer(data.fx_numerator??1,1,Number.MAX_SAFE_INTEGER);
+      const denominator=integer(data.fx_denominator??1,1,Number.MAX_SAFE_INTEGER);
+      const quotedAt=text(data.quoted_at,40), expiresAt=data.expires_at==null?null:text(data.expires_at,40);
+      const minDays=data.estimated_min_days==null?null:integer(data.estimated_min_days,0,3650);
+      const maxDays=data.estimated_max_days==null?null:integer(data.estimated_max_days,0,3650);
+      const fxEvidence=text(data.fx_evidence_reference,500)||null;
+      if(!offerId||!/^[A-Z]{2}$/.test(destination)||!/^[A-Z0-9_-]{2,40}$/.test(method)||cost===null||!/^[A-Z]{3}$/.test(currency)||numerator===null||denominator===null||!quotedAt||(data.estimated_min_days!=null&&minDays===null)||(data.estimated_max_days!=null&&maxDays===null)||(minDays!==null&&maxDays!==null&&minDays>maxDays))
+        return json({success:false,error:"Invalid shipping quote fields"},400);
+      const offer=await env.DB.prepare("SELECT o.id,o.source_currency_code,c.currency_code AS destination_currency FROM supplier_variant_offers o JOIN countries c ON c.country_code=? AND c.is_active=1 WHERE o.id=?").bind(destination,offerId).first();
+      if(!offer||offer.destination_currency!==currency)return json({success:false,error:"Offer, active destination or destination currency is invalid"},409);
+      if(offer.source_currency_code!==currency&&!fxEvidence)return json({success:false,error:"Cross-currency quotes require FX evidence"},400);
+      const before=await env.DB.prepare("SELECT * FROM supplier_variant_shipping_quotes WHERE id=?").bind(id).first();
+      await env.DB.prepare("INSERT INTO supplier_variant_shipping_quotes (id,offer_id,destination_country_code,shipping_method_code,shipping_cost_minor,currency_code,estimated_min_days,estimated_max_days,availability_status,source_to_destination_fx_numerator,source_to_destination_fx_denominator,fx_evidence_reference,quoted_at,expires_at) VALUES (?,?,?,?,?,?,?,?,'AVAILABLE',?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET shipping_method_code=excluded.shipping_method_code,shipping_cost_minor=excluded.shipping_cost_minor,currency_code=excluded.currency_code,estimated_min_days=excluded.estimated_min_days,estimated_max_days=excluded.estimated_max_days,availability_status='AVAILABLE',source_to_destination_fx_numerator=excluded.source_to_destination_fx_numerator,source_to_destination_fx_denominator=excluded.source_to_destination_fx_denominator,fx_evidence_reference=excluded.fx_evidence_reference,quoted_at=excluded.quoted_at,expires_at=excluded.expires_at")
+        .bind(id,offerId,destination,method,cost,currency,minDays,maxDays,numerator,denominator,fxEvidence,quotedAt,expiresAt).run();
+      const after=await env.DB.prepare("SELECT * FROM supplier_variant_shipping_quotes WHERE id=?").bind(id).first();
+      await audit("SHIPPING_QUOTE",id,before?"QUOTE_UPDATED":"QUOTE_CREATED",before,after);
+      return json({success:true,quote:after},before?200:201);
+    }
+    if (data.operation === "verify_offer") {
+      const id=text(data.offer_id,100);
+      const score=value=>integer(value,0,100);
+      const quality=score(data.quality_score), service=score(data.service_score), packaging=score(data.packaging_score), delivery=score(data.delivery_score);
+      const packageStatus=text(data.packaging_status,30).toUpperCase();
+      const evidence=text(data.evidence_reference,500);
+      if(!id||quality===null||service===null||packaging===null||delivery===null||!["NEUTRAL_CONFIRMED","BRANDED_CONFIRMED","FAILED"].includes(packageStatus)||!evidence)
+        return json({success:false,error:"Four 0–100 scores, packaging verification and evidence reference are required"},400);
+      const before=await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
+      if(!before)return json({success:false,error:"Supplier offer not found"},404);
+      if(before.approval_status==="ACTIVE")return json({success:false,error:"Pause an ACTIVE offer before changing verification"},409);
+      await env.DB.prepare("UPDATE supplier_variant_offers SET quality_score=?,service_score=?,packaging_score=?,delivery_score=?,packaging_status=?,supplier_branding_excluded=?,tracking_available=?,returns_supported=?,evidence_reference=?,verified_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(quality,service,packaging,delivery,packageStatus,data.supplier_branding_excluded===true?1:0,data.tracking_available===true?1:0,data.returns_supported===true?1:0,evidence,id).run();
+      const after=await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
+      await audit("OFFER",id,"OFFER_VERIFIED",before,after);
+      return json({success:true,offer:after});
+    }
+\n    if (data.operation === "transition") {
       const id=text(data.offer_id,100), target=text(data.approval_status,30).toUpperCase();
       if (!id || !["TERMS_REVIEW","SAMPLE_REQUIRED","QUALITY_APPROVED","DESTINATION_APPROVED","ACTIVE","PAUSED","REJECTED"].includes(target))
         return json({success:false,error:"Invalid offer transition"},400);
@@ -321,7 +363,7 @@ async function manageSupplierOffers(request, env) {
       await audit("OFFER",id,"STATUS_"+target,before,after);
       return json({success:true,offer:after});
     }
-    return json({success:false,error:"operation must be save_offer or transition"},400);
+    return json({success:false,error:"operation must be save_offer, save_quote, verify_offer or transition"},400);
   } catch(error) {
     console.error("Supplier offer management failed:",error);
     return json({success:false,error:"Unable to save supplier offer operation"},500);
