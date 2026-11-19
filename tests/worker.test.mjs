@@ -1294,8 +1294,8 @@ test("Bangladesh COD ledger is owner-only and records financial evidence pending
   assert.equal(response.status, 201);
   assert.equal(payload.entry.status, "PENDING_REVIEW");
   assert.equal(payload.entry.amount_minor, 25000);
-  assert.match(calls[2].sql, /INSERT INTO cod_reconciliation_entries/);
-  assert.match(calls[2].sql, /'PENDING_REVIEW'/);
+  assert.match(calls[1].sql, /INSERT INTO cod_reconciliation_entries/);
+  assert.match(calls[1].sql, /'PENDING_REVIEW'/);
 });
 
 test("COD collection ledger cannot be recorded before delivery", async () => {
@@ -1379,11 +1379,13 @@ test("COD ledger review records a human verification state", async () => {
 });
 
 test("Courier settlement cannot exceed recorded customer COD collection", async () => {
+  let insertSql = "";
   const DB = {
     prepare(sql) {
-      return { bind() { return { first: async () => sql.includes("SUM(CASE")
-        ? { collected: 1000, settled: 900 }
-        : { id: "order-bd", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "DELIVERED", total_minor: 1000 } }; } };
+      return { bind() { insertSql = sql; return {
+        first: async () => ({ id: "order-bd", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "DELIVERED", total_minor: 1000 }),
+        run: async () => ({ meta: { changes: 0 } })
+      }; } };
     }
   };
   const response = await worker.fetch(request("/api/admin/orders/cod-ledger", "POST", JSON.stringify({
