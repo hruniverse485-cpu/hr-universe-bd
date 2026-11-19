@@ -160,6 +160,6 @@ test("order endpoint rejects missing idempotency key before database work", asyn
 });
 
 test("Worker delegates authoritative stock reservation to database triggers", () => {
-  assert.match(workerSource, /atomic reservation inside the same D1 batch/i);
+  assert.match(workerSource, /authoritative atomic[\\s\\S]*reservation/i);
   assert.match(workerSource, /A valid Idempotency-Key header/);
 });
