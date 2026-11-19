@@ -313,3 +313,14 @@ test("private supplier dashboard inline JavaScript has valid syntax", () => {
   assert.ok(scriptStart >= 0 && scriptEnd > scriptStart, "dashboard must contain inline script");
   assert.doesNotThrow(() => new Script(page.slice(scriptStart + 8, scriptEnd)));
 });
+
+
+test("supplier offer mutations commit together with complete before/after audit snapshots", () => {
+  assert.match(workerSource, /const commitAudited = async/);
+  assert.match(workerSource, /env\.DB\.batch\(\[mutation, auditStatement\]\)/);
+  assert.match(workerSource, /json_object\(/);
+  assert.doesNotMatch(workerSource, /await audit\(/);
+  for (const operation of ["OFFER_CREATED","QUOTE_CREATED","OFFER_VERIFIED","STATUS_"]) {
+    assert.ok(workerSource.includes(operation), "missing audited operation " + operation);
+  }
+});
