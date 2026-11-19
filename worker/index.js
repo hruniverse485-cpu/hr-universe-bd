@@ -1379,6 +1379,136 @@ async function manageCourierServiceAreas(request, env) {
   }
 }
 
+async function manageLocalSupplierProfiles(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+  if (request.method !== "PUT") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 12000) return json({ success: false, error: "Request body is too large" }, 413);
+    data = JSON.parse(raw);
+  } catch { return json({ success: false, error: "Invalid JSON body" }, 400); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "A JSON object is required" }, 400);
+  const supplierId = text(data.supplier_id, 100);
+  const businessType = text(data.business_type, 30).toUpperCase() || "OTHER";
+  const sampleStatus = text(data.sample_status, 20).toUpperCase() || "NOT_REQUESTED";
+  const quality = data.quality_score == null || data.quality_score === "" ? null : Number(data.quality_score);
+  const dispatch = data.dispatch_score == null || data.dispatch_score === "" ? null : Number(data.dispatch_score);
+  const response = data.response_score == null || data.response_score === "" ? null : Number(data.response_score);
+  const scoreValues = [quality, dispatch, response].filter(v => v !== null);
+  if (!supplierId || !["MANUFACTURER","WHOLESALER","DISTRIBUTOR","IMPORTER","AUTHORIZED_RESELLER","OTHER"].includes(businessType) ||
+      !["NOT_REQUESTED","REQUESTED","RECEIVED","PASSED","FAILED"].includes(sampleStatus) ||
+      scoreValues.some(v => !Number.isFinite(v) || v < 0 || v > 100)) {
+    return json({ success: false, error: "Supplier, valid business type, sample status and optional 0–100 scores are required" }, 400);
+  }
+  try {
+    const supplier = await env.DB.prepare("SELECT id FROM suppliers WHERE id = ?").bind(supplierId).first();
+    if (!supplier) return json({ success: false, error: "Supplier was not found" }, 404);
+    await env.DB.prepare(`INSERT INTO supplier_local_profiles (
+      supplier_id, business_type, verification_status, district, area_name, pickup_address,
+      direct_to_customer, blind_shipping_supported, branded_packaging_supported, sample_status,
+      quality_score, dispatch_score, response_score, last_stock_verified_at, verification_evidence, updated_at
+    ) VALUES (?, ?, 'UNVERIFIED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(supplier_id) DO UPDATE SET
+      business_type = excluded.business_type, district = excluded.district,
+      area_name = excluded.area_name, pickup_address = excluded.pickup_address,
+      direct_to_customer = excluded.direct_to_customer,
+      blind_shipping_supported = excluded.blind_shipping_supported,
+      branded_packaging_supported = excluded.branded_packaging_supported,
+      sample_status = excluded.sample_status, quality_score = excluded.quality_score,
+      dispatch_score = excluded.dispatch_score, response_score = excluded.response_score,
+      verification_evidence = excluded.verification_evidence, updated_at = CURRENT_TIMESTAMP`)
+      .bind(supplierId, businessType, text(data.district, 120) || null,
+        text(data.area_name, 120) || null, text(data.pickup_address, 500) || null,
+        data.direct_to_customer === true ? 1 : 0, data.blind_shipping_supported === true ? 1 : 0,
+        data.branded_packaging_supported === true ? 1 : 0, sampleStatus,
+        quality, dispatch, response, text(data.verification_evidence, 500) || null).run();
+    return json({ success: true, message: "Local supplier profile saved. Verification remains UNVERIFIED and stock freshness is not asserted.", supplier_profile: { supplier_id: supplierId, verification_status: "UNVERIFIED", last_stock_verified_at: null } }, 200);
+  } catch (error) {
+    console.error("Local supplier profile save failed:", error);
+    return json({ success: false, error: "Unable to save local supplier profile" }, 500);
+  }
+}
+
+async function manageLocalSupplierQuotes(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const supplierId = text(url.searchParams.get("supplier_id"), 100);
+    const productId = text(url.searchParams.get("product_id"), 100);
+    try {
+      const conditions = [], values = [];
+      if (supplierId) { conditions.push("q.supplier_id = ?"); values.push(supplierId); }
+      if (productId) { conditions.push("q.product_id = ?"); values.push(productId); }
+      let query = `SELECT q.id, q.supplier_id, s.supplier_name, q.product_id, p.name AS product_name,
+        q.variant_id, q.supplier_sku, q.unit_cost_minor, q.currency_code, q.available_quantity,
+        q.minimum_order_quantity, q.lead_time_hours, q.quote_status, q.stock_verified_at,
+        q.valid_until, q.evidence_reference, q.created_at
+        FROM supplier_local_quotes q JOIN suppliers s ON s.id = q.supplier_id
+        JOIN products p ON p.id = q.product_id`;
+      if (conditions.length) query += " WHERE " + conditions.join(" AND ");
+      query += " ORDER BY q.created_at DESC LIMIT 300";
+      const result = await env.DB.prepare(query).bind(...values).all();
+      return json({ success: true, quotes: result.results || [] });
+    } catch (error) {
+      console.error("Local supplier quote listing failed:", error);
+      return json({ success: false, error: "Unable to load supplier quotes" }, 500);
+    }
+  }
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 10000) return json({ success: false, error: "Request body is too large" }, 413);
+    data = JSON.parse(raw);
+  } catch { return json({ success: false, error: "Invalid JSON body" }, 400); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "A JSON object is required" }, 400);
+  const supplierId = text(data.supplier_id, 100), productId = text(data.product_id, 100);
+  const variantId = text(data.variant_id, 100) || null;
+  const currencyCode = text(data.currency_code, 3).toUpperCase() || "BDT";
+  const cost = Number(data.unit_cost_minor), quantity = data.available_quantity == null || data.available_quantity === "" ? null : Number(data.available_quantity);
+  const moq = Number(data.minimum_order_quantity ?? 1), lead = data.lead_time_hours == null || data.lead_time_hours === "" ? null : Number(data.lead_time_hours);
+  if (!supplierId || !productId || !Number.isSafeInteger(cost) || cost < 0 ||
+      !Number.isSafeInteger(moq) || moq < 1 ||
+      (quantity !== null && (!Number.isSafeInteger(quantity) || quantity < 0)) ||
+      (lead !== null && (!Number.isSafeInteger(lead) || lead < 0))) {
+    return json({ success: false, error: "Supplier, product, non-negative integer unit cost, valid stock, MOQ and lead time are required" }, 400);
+  }
+  try {
+    const [supplier, product, currency] = await Promise.all([
+      env.DB.prepare("SELECT id FROM suppliers WHERE id = ?").bind(supplierId).first(),
+      env.DB.prepare("SELECT id FROM products WHERE id = ?").bind(productId).first(),
+      env.DB.prepare("SELECT code FROM currencies WHERE code = ?").bind(currencyCode).first()
+    ]);
+    if (!supplier || !product || !currency) return json({ success: false, error: "Supplier, product or currency was not found" }, 404);
+    if (variantId) {
+      const variant = await env.DB.prepare("SELECT id FROM product_variants WHERE id = ? AND product_id = ?").bind(variantId, productId).first();
+      if (!variant) return json({ success: false, error: "Variant does not belong to the selected product" }, 400);
+    }
+    const id = crypto.randomUUID();
+    await env.DB.prepare(`INSERT INTO supplier_local_quotes (
+      id, supplier_id, product_id, variant_id, supplier_sku, unit_cost_minor, currency_code,
+      available_quantity, minimum_order_quantity, lead_time_hours, quote_status,
+      stock_verified_at, valid_until, evidence_reference
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', NULL, ?, ?)`)
+      .bind(id, supplierId, productId, variantId, text(data.supplier_sku, 120) || null,
+        cost, currencyCode, quantity, moq, lead, text(data.valid_until, 40) || null,
+        text(data.evidence_reference, 500) || null).run();
+    return json({ success: true, message: "Supplier quote saved as PENDING; stock and price are not treated as verified.", quote: { id, supplier_id: supplierId, product_id: productId, quote_status: "PENDING", stock_verified_at: null } }, 201);
+  } catch (error) {
+    console.error("Local supplier quote save failed:", error);
+    return json({ success: false, error: "Unable to save supplier quote" }, 500);
+  }
+}
+
 async function manageCourierRates(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
@@ -1761,6 +1891,8 @@ export default {
     if (path === "/api/admin/partners/suppliers") return listLocalSuppliers(request, env);
 
     if (path === "/api/admin/partners/service-areas") return manageCourierServiceAreas(request, env);
+    if (path === "/api/admin/partners/supplier-profiles") return manageLocalSupplierProfiles(request, env);
+    if (path === "/api/admin/partners/supplier-quotes") return manageLocalSupplierQuotes(request, env);
     if (path === "/api/admin/partners/courier-rates") return manageCourierRates(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
