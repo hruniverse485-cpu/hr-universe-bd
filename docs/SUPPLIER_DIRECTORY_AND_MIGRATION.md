@@ -121,6 +121,9 @@ This remains a backend foundation, not a finished admin screen or live supplier 
 
 ## Private supplier control center UI
 
-A responsive owner-only page is available in the Feature branch at `/admin-sourcing.html` after deployment. It uses the existing `HR_ADMIN_API_TOKEN` for authenticated offer listing and changes. The token is held in page memory only and is not written to browser storage. The dashboard supports offer creation/update, destination quote entry, verification evidence and scores, and approval-state transitions.
+A responsive owner-only page is available in the Feature branch at `/admin-sourcing.html` after deployment. It uses the existing `HR_ADMIN_API_TOKEN` for authenticated offer listing and changes. The token is held in page memory only and is not written to browser storage. The dashboard supports offer creation/update, destination quote entry, verification evidence and scores, approval-state transitions, and per-offer audit history.
 
 Before it can be used against a real database, the owner must configure the Worker secret and apply the additive migrations through the separately approved deployment process. The dashboard does not contact suppliers, create orders or make payments. Never paste the owner token into chat or commit it to Git.
+
+
+The private audit view is scoped to the selected offer and displays the recorded action, actor, timestamp and entity reference. Audit before/after snapshots remain stored in the database for later detailed review.
