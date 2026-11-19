@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>HR UNIVERSE · Partner Operations</title>
+<style>
+:root{color-scheme:dark;--bg:#081321;--panel:#101f31;--line:#263a50;--muted:#9aadc2;--ink:#f4f7fb;--gold:#d8b875;--blue:#8db8e8;--green:#83d2ad;--red:#ff9b9b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% -10%,#203b59 0,transparent 42%),var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1200px;margin:auto;padding:24px 16px 60px}.top{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:18px}
+.brand{font-size:12px;letter-spacing:.18em;color:var(--gold);font-weight:800}.title{font-size:clamp(25px,5vw,36px);margin:8px 0 2px;letter-spacing:-.04em}.muted,.note{color:var(--muted);font-size:12px}
+.pill{font-size:11px;padding:4px 9px;border:1px solid #49617a;border-radius:20px;color:var(--blue)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.panel{background:linear-gradient(145deg,#14263a,#0d1a2a);border:1px solid var(--line);border-radius:15px;padding:17px;margin-top:16px;min-width:0}
+h2{font-size:18px;margin:0 0 12px}h3{font-size:14px;color:var(--gold);margin:0 0 8px}
+label{display:block;font-size:12px;color:var(--muted);margin:0 0 5px}input,select,textarea{width:100%;min-height:40px;padding:9px 10px;border:1px solid #354b63;border-radius:8px;background:#091726;color:var(--ink);font:inherit}textarea{min-height:76px;resize:vertical}
+form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.wide{grid-column:1/-1}
+button{border:1px solid #526a82;border-radius:8px;background:#1c3651;color:white;padding:9px 13px;font-weight:700;cursor:pointer}button.primary{background:var(--gold);color:#142033;border-color:var(--gold)}button:disabled{opacity:.5}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.list{display:grid;gap:8px;margin-top:12px}.item{border:1px solid var(--line);border-radius:10px;padding:11px;background:#0a1928;min-width:0}.item strong{display:block;overflow-wrap:anywhere}.item small{color:var(--muted);overflow-wrap:anywhere}.status{padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#091726;margin-top:14px;white-space:pre-wrap;overflow-wrap:anywhere}.good{color:var(--green)}.bad{color:var(--red)}.hidden{display:none!important}
+@media(max-width:720px){.grid{grid-template-columns:1fr}form{grid-template-columns:1fr}.wide{grid-column:auto}.panel{padding:13px}}
+</style>
+</head>
+<body><main>
+<header class="top"><div><div class="brand">HR UNIVERSE · PRIVATE OPERATIONS</div><div class="title">Partner Operations</div><div class="muted">Bangladesh courier network · local suppliers · contacts · follow-ups</div></div><span class="pill">OWNER ACCESS ONLY · PILOT</span></header>
+<section class="panel" id="login"><h2>Secure owner access</h2><p class="note">Paste the Worker secret. It is kept in page memory only and cleared when you disconnect or close this page. Never share it.</p><label for="token">HR_ADMIN_API_TOKEN</label><input id="token" type="password" autocomplete="off"><div class="actions" style="margin-top:10px"><button class="primary" id="connect">Connect</button></div><div id="loginStatus" class="status">Not connected</div></section>
+<section id="app" class="hidden">
+<div class="actions" style="justify-content:space-between;margin-top:16px"><div class="note">Pilot mode: research and internal records only. No external message, booking, payment or contract action.</div><div class="actions"><button id="refresh">Refresh all</button><button id="disconnect">Disconnect</button></div></div>
+<div class="grid">
+<section class="panel"><h2>Courier partner directory</h2><form id="courierForm">
+<div><label>Partner name</label><input name="partner_name" required placeholder="Pathao Courier"></div><div><label>Partner code</label><input name="partner_code" required placeholder="PATHAO"></div>
+<div class="wide"><label>Official website (HTTPS)</label><input name="website_url" type="url" placeholder="https://..."></div>
+<div class="wide"><label>Internal research note</label><textarea name="internal_notes" placeholder="Coverage, published rates, COD terms to verify..."></textarea></div>
+<div class="wide"><button class="primary">Add research candidate</button></div></form><div class="note">New records remain RESEARCH / NOT ASSESSED. This does not connect an account.</div><div id="couriers" class="list"></div></section>
+<section class="panel"><h2>Existing supplier directory</h2><label for="supplierSearch">Search suppliers</label><input id="supplierSearch" placeholder="Name, email or ID"><div class="actions" style="margin-top:8px"><button id="searchSuppliers">Search</button></div><div id="suppliers" class="list"></div></section>
+</div>
+<div class="grid">
+<section class="panel"><h2>Save partner contact</h2><form id="contactForm">
+<div><label>Partner type</label><select name="partner_type"><option>COURIER</option><option>SUPPLIER</option></select></div><div><label>Partner ID</label><input name="partner_id" required></div>
+<div><label>Contact name</label><input name="contact_name"></div><div><label>Role / department</label><input name="role_title"></div>
+<div><label>Email</label><input name="email" type="email"></div><div><label>Phone / WhatsApp</label><input name="phone"></div>
+<div><label>Preferred channel</label><select name="preferred_channel"><option value="">Not set</option><option>EMAIL</option><option>PHONE</option><option>WHATSAPP</option><option>OTHER</option></select></div><div><label>Notes</label><input name="notes"></div>
+<div class="wide"><button class="primary">Save unverified contact</button></div></form><div class="note">All contacts are stored UNVERIFIED and non-primary until a separate verification workflow exists.</div><div id="contacts" class="list"></div></section>
+<section class="panel"><h2>Internal interaction & follow-up</h2><form id="interactionForm">
+<div><label>Partner type</label><select name="partner_type"><option>COURIER</option><option>SUPPLIER</option></select></div><div><label>Partner ID</label><input name="partner_id" required></div>
+<div><label>Interaction label</label><select name="interaction_type"><option>RESEARCH</option><option>EMAIL</option><option>PHONE</option><option>WHATSAPP</option><option>MEETING</option><option>QUOTE_RECEIVED</option><option>FOLLOW_UP</option><option>SUPPORT_CASE</option><option>OTHER</option></select></div><div><label>Subject</label><input name="subject"></div>
+<div class="wide"><label>Internal summary</label><textarea name="summary" required placeholder="Record what was reviewed or what needs follow-up."></textarea></div>
+<div><label>Outcome</label><input name="outcome"></div><div><label>Follow-up date</label><input name="follow_up_at" type="date"></div>
+<div class="wide"><label>Evidence reference (optional)</label><input name="evidence_reference"></div>
+<div class="wide"><button class="primary">Save internal note</button></div></form><div class="note">No email, WhatsApp, SMS or call is sent. “EMAIL” and “WHATSAPP” are record labels only.</div><div id="interactions" class="list"></div></section>
+</div>
+<div id="result" class="status" aria-live="polite">Connect to load partner records.</div>
+</section>
+<footer class="note" style="margin-top:20px">HR UNIVERSE pilot control. Keep the owner token private. Supplier and courier records are internal and must never appear on the customer storefront.</footer>
+</main>
+<script>
+(()=>{
+let token="";
+const $=id=>document.getElementById(id);
+const show=(id,msg,ok)=>{const e=$(id);e.textContent=msg;e.className="status"+(ok===true?" good":ok===false?" bad":"")};
+const api=async(path,method="GET",body)=>{const r=await fetch(path,{method,headers:{Authorization:"Bearer "+token,...(body?{"Content-Type":"application/json"}:{})},body:body?JSON.stringify(body):undefined,cache:"no-store"});const d=await r.json().catch(()=>({success:false,error:"Invalid server response"}));if(!r.ok||!d.success)throw new Error(d.error||"Request failed");return d};
+const formData=f=>Object.fromEntries(new FormData(f).entries());
+const list=(id,rows,render)=>{const root=$(id);root.replaceChildren();if(!rows.length){root.textContent="No records found.";return}rows.forEach(row=>{const item=document.createElement("div");item.className="item";render(item,row);root.append(item)})};
+const line=(parent,title,detail)=>{const strong=document.createElement("strong");strong.textContent=title;const small=document.createElement("small");small.textContent=detail||"";parent.append(strong,small)};
+async function loadCouriers(){const d=await api("/api/admin/partners/couriers");list("couriers",d.partners,(e,p)=>line(e,p.partner_name+" · "+p.partner_code,p.onboarding_status+" / "+p.api_status+" · "+p.id))}
+async function loadSuppliers(){const q=encodeURIComponent($("supplierSearch").value.trim());const d=await api("/api/admin/partners/suppliers?q="+q);list("suppliers",d.suppliers,(e,p)=>line(e,p.supplier_name+" · "+p.status,(p.origin_country_code||"Country n/a")+" · "+(p.verification_status||"PROFILE NOT SET")+" · "+p.id))}
+async function loadContacts(){const d=await api("/api/admin/partners/contacts");list("contacts",d.contacts,(e,p)=>line(e,(p.contact_name||"Unnamed contact")+" · "+p.partner_type,p.email||p.phone||"No channel")+"");}
+async function loadInteractions(){const d=await api("/api/admin/partners/interactions?limit=40");list("interactions",d.interactions,(e,p)=>line(e,p.partner_type+" · "+p.interaction_type,p.summary+" · "+(p.follow_up_at||"No follow-up") ))}
+async function refresh(){try{await Promise.all([loadCouriers(),loadSuppliers(),loadContacts(),loadInteractions()]);show("result","Partner data refreshed.",true)}catch(e){show("result",e.message,false)}}
+$("connect").addEventListener("click",async()=>{token=$("token").value.trim();if(!token){show("loginStatus","Enter the owner token.",false);return}try{await api("/api/admin/partners/couriers");$("login").classList.add("hidden");$("app").classList.remove("hidden");$("token").value="";await refresh()}catch(e){token="";show("loginStatus",e.message,false)}});
+$("refresh").addEventListener("click",refresh);$("searchSuppliers").addEventListener("click",loadSuppliers);
+$("supplierSearch").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();loadSuppliers()}});
+$("disconnect").addEventListener("click",()=>{token="";$("app").classList.add("hidden");$("login").classList.remove("hidden");$("token").value="";show("loginStatus","Disconnected. Token cleared.",true)});
+$("courierForm").addEventListener("submit",async e=>{e.preventDefault();try{const d=await api("/api/admin/partners/couriers","POST",formData(e.currentTarget));show("result",d.message,true);e.currentTarget.reset();await loadCouriers()}catch(x){show("result",x.message,false)}});
+$("contactForm").addEventListener("submit",async e=>{e.preventDefault();try{const d=await api("/api/admin/partners/contacts","POST",formData(e.currentTarget));show("result",d.message,true);e.currentTarget.reset();await loadContacts()}catch(x){show("result",x.message,false)}});
+$("interactionForm").addEventListener("submit",async e=>{e.preventDefault();try{const d=await api("/api/admin/partners/interactions","POST",formData(e.currentTarget));show("result",d.message,true);e.currentTarget.reset();await loadInteractions()}catch(x){show("result",x.message,false)}});
+})();
+</script></body></html>
