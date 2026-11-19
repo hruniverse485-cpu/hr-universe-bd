@@ -2068,7 +2068,9 @@ async function manageBangladeshCodLedger(request, env) {
           ? "Customer COD collection entries cannot exceed the server-calculated order total"
           : entryType === "COURIER_SETTLEMENT_RECEIVED"
             ? "Courier settlement cannot exceed recorded customer COD collection"
-            : "Ledger entry could not be saved";
+            : entryType === "CUSTOMER_REFUND"
+              ? "Customer refunds cannot exceed verified customer COD collection"
+              : "Ledger entry could not be saved";
         return json({ success: false, error: message }, 409);
       }
       return json({ success: true, entry: { id, order_id: orderId, entry_type: entryType, amount_minor: amount, currency_code: "BDT", status: "PENDING_REVIEW" } }, 201);
