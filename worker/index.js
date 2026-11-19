@@ -493,7 +493,7 @@ async function listProducts(request, env) {
   const limit = Number.isSafeInteger(limitRaw)
     ? Math.min(50, Math.max(1, limitRaw))
     : 24;
-  const inventoryMaxAgeHours = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 720) || 72;
+  const inventoryMaxAgeHours = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 72) || 72;
   const inventoryMaxAgeModifier = `-${inventoryMaxAgeHours} hours`;
 
   if (
@@ -2128,7 +2128,7 @@ async function manageCatalogAdmin(request, env) {
       if(!before)return json({success:false,error:"Product not found"},404);
       if(status==="ACTIVE"){
         if(!/^[A-Z]{2}$/.test(country)||!/^[A-Z]{3}$/.test(currency))return json({success:false,error:"Country and currency are required for activation"},400);
-        const age=integer(env.HR_INVENTORY_MAX_AGE_HOURS,1,720)||72;
+        const age=integer(env.HR_INVENTORY_MAX_AGE_HOURS,1,72)||72;
         const ready=await env.DB.prepare("SELECT 1 AS ok FROM products p JOIN categories c ON c.id=p.category_id AND c.is_active=1 JOIN countries co ON co.country_code=? AND co.currency_code=? AND co.is_active=1 JOIN currencies cu ON cu.code=? AND cu.is_active=1 WHERE p.id=? AND EXISTS (SELECT 1 FROM product_variants v JOIN inventory i ON i.variant_id=v.id AND i.product_id=p.id AND i.quantity>0 JOIN warehouses w ON w.id=i.warehouse_id AND w.country_code=co.country_code AND w.status='ACTIVE' WHERE v.product_id=p.id AND v.status='ACTIVE' AND i.verified_at IS NOT NULL AND datetime(i.verified_at)>=datetime('now',?)) AND EXISTS (SELECT 1 FROM product_prices pp WHERE pp.product_id=p.id AND pp.country_code=co.country_code AND pp.currency_code=co.currency_code AND pp.status='ACTIVE' AND (pp.variant_id IS NULL OR EXISTS (SELECT 1 FROM product_variants v2 WHERE v2.id=pp.variant_id AND v2.product_id=p.id AND v2.status='ACTIVE')) AND (pp.valid_from IS NULL OR datetime(pp.valid_from)<=datetime('now')) AND (pp.valid_until IS NULL OR datetime(pp.valid_until)>datetime('now')))")
           .bind(country,currency,currency,id,"-"+age+" hours").first();
         if(!ready)return json({success:false,error:"Activation requires active category and market, fresh verified warehouse stock, an active variant and valid active market price"},409);
@@ -2153,7 +2153,7 @@ async function manageInventoryVerification(request, env) {
 
   try {
     if (request.method === "GET") {
-      const maxAgeHours = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 720) || 72;
+      const maxAgeHours = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 72) || 72;
       const result = await env.DB.prepare(`SELECT i.id AS inventory_id, i.product_id, p.name AS product_name,
         i.variant_id, pv.sku, pv.variant_name, i.warehouse_id, w.warehouse_name,
         w.city, i.quantity AS available_quantity,
