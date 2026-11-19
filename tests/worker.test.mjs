@@ -304,3 +304,11 @@ test("supplier offer audit listing is owner-authenticated and scoped by entity",
   assert.equal(response.status, 200);
   assert.equal(payload.audit[0].action, "OFFER_CREATED");
 });
+
+
+test("private supplier dashboard inline JavaScript has valid syntax", () => {
+  const page = readFileSync(new URL("../public/admin-sourcing.html", import.meta.url), "utf8");
+  const scripts = [...page.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
+  assert.equal(scripts.length, 1);
+  assert.doesNotThrow(() => new Script(scripts[0][1]));
+});
