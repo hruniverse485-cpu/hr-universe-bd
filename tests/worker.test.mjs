@@ -64,6 +64,25 @@ test("product endpoint requires a valid country and currency", async () => {
   assert.equal(response.status, 400);
 });
 
+test("Product catalog only lists products with verified active warehouse stock", async () => {
+  let sql = "";
+  let values = [];
+  const DB = {
+    prepare(query) {
+      sql = query;
+      return { bind(...args) { values = args; return { all: async () => ({ results: [] }) }; } };
+    }
+  };
+  const response = await worker.fetch(request("/api/products?country=BD&currency=BDT"), { DB });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.success, true);
+  assert.ok(sql.includes("i.verified_at IS NOT NULL"));
+  assert.ok(sql.includes("i.quantity > 0"));
+  assert.ok(sql.includes("w.status = 'ACTIVE'"));
+  assert.ok(sql.includes("available_quantity"));
+  assert.deepEqual(values, ["BD", "BDT", "", "", "", 50]);
+});
 test("order endpoint rejects malformed JSON without creating an order", async () => {
   const response = await worker.fetch(
     request("/api/orders", "POST", "{not-json}", {
