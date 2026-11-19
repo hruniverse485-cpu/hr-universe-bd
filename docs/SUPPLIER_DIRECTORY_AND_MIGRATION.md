@@ -117,3 +117,10 @@ The private `POST /api/admin/sourcing/offers` endpoint requires the `HR_ADMIN_AP
 - Offer supplier/product/variant identity cannot be edited in place. ACTIVE offers must be paused before editing. Changes write before/after audit snapshots to `supplier_offer_audit`.
 
 This remains a backend foundation, not a finished admin screen or live supplier integration. Shipping quote write UI/API, richer authorization roles, audit retention, and real supplier evidence still need completion. Do not activate a supplier without real documented checks.
+
+
+## Private supplier control center UI
+
+A responsive owner-only page is available in the Feature branch at `/admin-sourcing.html` after deployment. It uses the existing `HR_ADMIN_API_TOKEN` for authenticated offer listing and changes. The token is held in page memory only and is not written to browser storage. The dashboard supports offer creation/update, destination quote entry, verification evidence and scores, and approval-state transitions.
+
+Before it can be used against a real database, the owner must configure the Worker secret and apply the additive migrations through the separately approved deployment process. The dashboard does not contact suppliers, create orders or make payments. Never paste the owner token into chat or commit it to Git.
