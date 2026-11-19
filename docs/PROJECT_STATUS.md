@@ -14,7 +14,7 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 - The Worker requires an active Bangladesh country/currency configuration and an active local-warehouse shipping rate before accepting an order.
 - The Worker writes the legacy order row and corresponding `order_items` in one D1 batch.
 - `public/index.html` has been replaced with an original premium, low-pressure discovery storefront. It fetches products from `/api/products` for BD/BDT, supports search, category navigation, sorting, saved products, product detail modal, responsive layouts, and reduced-motion preferences. It shows no hard-coded sample products and no fake-order fallback. It is currently a browsing/catalog experience; customer checkout is intentionally not exposed in this iteration.
-- `/api/products` now excludes products unless they have at least one ACTIVE variant with positive inventory in an ACTIVE warehouse for the requested country and a non-null stock verification timestamp. It reports the maximum available quantity in a single active warehouse (matching the order reservation trigger) and `LOCAL_WAREHOUSE` fulfillment type. Stock older than `HR_INVENTORY_MAX_AGE_HOURS` (1–720 hours; default 72) is excluded from public catalog eligibility. This reduces stale listings but is not a guarantee that physical stock cannot change between checks.
+- `/api/products` now excludes products unless they have at least one ACTIVE variant with positive inventory in an ACTIVE warehouse for the requested country and a non-null stock verification timestamp. It reports the maximum available quantity in a single active warehouse (matching the order reservation trigger) and `LOCAL_WAREHOUSE` fulfillment type. Stock older than `HR_INVENTORY_MAX_AGE_HOURS` (1–72 hours; default 72) is excluded from public catalog eligibility. This reduces stale listings but is not a guarantee that physical stock cannot change between checks.
 - Migration `0013_inventory_verification_events.sql` adds append-only physical stock verification history. The owner-only `/api/admin/inventory/verification` API and `public/admin-inventory-verification.html` allow a physical count to be recorded; the Worker subtracts active reservations, atomically updates available stock and writes its evidence event. Counts below already-reserved units are rejected. The dashboard token stays in page memory only.
 - Migration `0012_bangladesh_cod_reconciliation_returns.sql` adds an owner-only COD evidence ledger and returned-parcel inspection records. The API caps customer collection at the server order total, caps courier settlement and customer refunds at verified customer COD collections, prevents duplicate evidence references, and records new entries pending owner review. Returned inspection quantities are capped atomically; inspection never changes inventory.
 - `public/admin-cod-operations.html` provides the owner-only COD ledger and return inspection interface. It keeps the bearer token in page memory only and does not persist it in browser storage.
@@ -59,7 +59,7 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 
 ## Next implementation sequence
 
-1. Add SKU/warehouse-specific freshness overrides and monitoring for repeated stock mismatches; the current system uses a global 72-hour default (configurable 1–720 hours).
+1. Add SKU/warehouse-specific freshness overrides and monitoring for repeated stock mismatches; the current system uses a global 72-hour default (configurable 1–72 hours).
 2. Extend backend integration coverage for full COD order creation, pricing, shipping, idempotent retries, and concurrent reservation scenarios.
 2. Extend the API-backed premium storefront with real category metadata, verified product imagery/details, and accessibility/browser checks; keep checkout disabled until payment and market prerequisites are met.
 3. Implement authentication and role-based authorization before exposing any admin or customer-private endpoints.
@@ -248,3 +248,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - GitHub Actions run [#293](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44571740222) passed on temporary non-merged validation PR head `c5cd60184c3be5b0b3c6decbb98db931ab4cf0f4`, based on Feature commit `b9f9123b048324bd85aa8f8047df8c4118be890e`: Worker syntax passed, all 109 Node tests passed, and all 14 ordered SQL migrations passed disposable SQLite validation.
 - The temporary validation PR was closed without merging. All implementation changes remain isolated to `feature/global-hybrid-rebuild`; no production database migration or deployment occurred.
 - Remaining: category editing/deletion policy, product image upload/management, richer product edit selection, variant-level price/availability UI polish, and complete customer storefront/cart/checkout. Live Cloudflare D1 integration and concurrency tests remain outstanding.
+
+
+## Atomic inventory freshness enforcement (2026-11-19)
+
+- Added ordered migration `0015_atomic_inventory_freshness_guard.sql`. The database reservation triggers now require Bangladesh warehouse stock to have a verification timestamp within the last 72 hours and not in the future; stale/future stock cannot be reserved by a direct API caller.
+- The migration clears existing future-dated verification timestamps because future timestamps are not valid evidence.
+- The Worker freshness setting is capped at 72 hours so public listing, product activation, inventory review and the atomic database reservation gate cannot disagree about the maximum permitted age. Owners may choose a stricter (shorter) setting.
+- Expanded `scripts/validate-migrations.py` to exercise fresh-stock reservation, stale-stock rejection (73 hours), future-dated rejection, and unchanged inventory after rejected reservations in disposable SQLite.
+- Migration 0015 and the initial migration-validator changes passed the first full CI run; an initial test harness transaction-isolation mistake was corrected. A later full CI run must verify the corrected tests and final Worker 72-hour cap before calling this checkpoint fully verified.
+- No production D1 migration or deployment was performed. Apply migration 0015 only through an explicitly approved production migration process.
