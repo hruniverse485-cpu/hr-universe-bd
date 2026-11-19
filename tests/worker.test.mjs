@@ -83,11 +83,13 @@ test("Product catalog only lists products with verified active warehouse stock",
   const payload = await response.json();
   assert.equal(response.status, 200);
   assert.equal(payload.success, true);
+  assert.equal(payload.inventory_max_age_hours, 72);
   assert.ok(sql.includes("i.verified_at IS NOT NULL"));
+  assert.equal(sql.split("datetime(i.verified_at) >= datetime('now', ?)").length - 1, 2);
   assert.ok(sql.includes("i.quantity > 0"));
   assert.ok(sql.includes("w.status = 'ACTIVE'"));
   assert.ok(sql.includes("available_quantity"));
-  assert.deepEqual(values, ["BD", "BDT", "", "", "", 24]);
+  assert.deepEqual(values, ["-72 hours", "BD", "BDT", "-72 hours", "", "", "", 24]);
 });
 test("order endpoint rejects malformed JSON without creating an order", async () => {
   const response = await worker.fetch(
