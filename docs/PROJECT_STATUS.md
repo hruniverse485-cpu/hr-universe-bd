@@ -275,3 +275,9 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added a regression assertion requiring both product-listing stock checks to enforce `verified_at <= CURRENT_TIMESTAMP`.
 - Corrected the catalog guardrails documentation: the configurable freshness ceiling is 72 hours (not 720), and future-dated evidence is excluded.
 - Feature-branch change only; CI validation is pending. No production deployment or database migration was performed.
+
+
+## Product image pipeline design (2026-11-19)
+
+- Added `docs/PRODUCT_IMAGE_STORAGE_DESIGN.md` after confirming the Worker currently has no R2 binding. The design specifies owner-only uploads, strict file-signature validation, opaque keys, private image delivery, approval gating, atomic audit, and release tests.
+- Upload implementation is intentionally blocked until the existing `product_images` schema and a non-production R2 bucket/binding can be verified. No fake binding, production resource, or deployment was created.
