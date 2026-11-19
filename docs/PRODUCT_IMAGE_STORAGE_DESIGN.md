@@ -38,3 +38,12 @@ Migration `0001_core_foundation.sql` defines `product_images` with `id`, `produc
 - Confirmed `wrangler.toml` has `ASSETS` and `DB` only; no R2 binding exists.
 - Confirmed the public product query reads `product_images.image_url` and inspected the original table definition. The current schema has no upload metadata or approval lifecycle.
 - No image upload route or R2 bucket has been created. No production resources or data were changed.
+
+
+## Public catalog image URL privacy guard (2026-11-20)
+
+- The public product API previously returned the stored `product_images.image_url` unchanged, and the storefront assigned it directly to an image `src`. That could reveal a third-party supplier/CDN hostname or a signed query string to customers.
+- The Worker now emits only same-origin image paths. Third-party, protocol-relative, unsafe-scheme, API-route and malformed image URLs are returned as `null`; same-origin absolute URLs are normalized to a path and their query strings/fragments are stripped.
+- Existing image records and schema are unchanged. This is a privacy guard, not an image upload/storage implementation: supplier-hosted images will remain hidden until copied into approved HR UNIVERSE-controlled storage.
+- Regression tests cover local paths, relative paths, same-origin absolute URLs, external supplier URLs, protocol-relative URLs, unsafe schemes, API paths, and null values.
+- Feature branch only. No R2 bucket, production migration, production deployment, paid service, or supplier account was changed.
