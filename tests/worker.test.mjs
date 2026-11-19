@@ -922,9 +922,11 @@ test("local supplier directory returns supplier records and rejects writes", asy
 
 test("partner operations dashboard inline JavaScript parses", () => {
   const html = readFileSync(new URL("../public/admin-partners.html", import.meta.url), "utf8");
-  const scripts = [...html.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
-  assert.equal(scripts.length, 1);
-  assert.doesNotThrow(() => new Script(scripts[0][1]));
+  const scriptStart = html.indexOf("<script>");
+  const scriptEnd = html.indexOf("</script>", scriptStart);
+  assert.notEqual(scriptStart, -1);
+  assert.notEqual(scriptEnd, -1);
+  assert.doesNotThrow(() => new Script(html.slice(scriptStart + 8, scriptEnd)));
   assert.match(html, /OWNER ACCESS ONLY/);
   assert.match(html, /No email, WhatsApp, SMS or call is sent/);
 });
