@@ -79,6 +79,14 @@ The owner retains control of banking, payment credentials, legal declarations, p
 At every work session, record the current branch/head commit, changed files, test results, unresolved defects, blockers, and the next exact action. Never report a feature as complete without implementation and verification evidence.
 
 
+## Inventory freshness upper-bound checkpoint (2026-11-20)
+
+- Product activation now rejects future-dated `inventory.verified_at` timestamps as well as timestamps older than the configured freshness window.
+- The owner inventory verification dashboard now labels future-dated verification timestamps as stale instead of treating them as fresh.
+- Added regression tests for both the product activation SQL guard and the inventory dashboard stale-state query.
+- This complements migration 0015 and the public product-listing upper-bound checks; no migration or production data change was needed.
+- Changes remain on `feature/global-hybrid-rebuild`. GitHub Actions validation is triggered by pushes to this branch; the latest run has not yet been confirmed. No deployment, paid service, or external action was performed.
+
 ## Catalog market-price editing checkpoint (2026-11-20)
 
 - The owner catalog dashboard now supports editing existing PENDING and INACTIVE market-price records without creating duplicate price rows.
