@@ -22,7 +22,7 @@
   <div class="header-actions"><button class="text-action" id="savedToggle" type="button">♡ Saved <span id="savedCount">0</span></button><button class="text-action" id="exploreTop" type="button">Explore ↓</button></div>
  </div>
  <nav class="nav" aria-label="Main navigation">
-  <button class="active" data-category="all">Discover</button><button data-category="new">New Arrivals</button><button data-category="all">All Categories</button><button data-category="all">Everyday Living</button><button data-category="all">Style & More</button><button data-category="all">Home & Lifestyle</button>
+  <button class="active" data-category="all">Discover</button><button data-category="new">New Arrivals</button><span id="dynamicCategoryNav"></span>
  </nav>
 </header>
 <main class="wrap">
@@ -72,7 +72,7 @@
   let list=(savedOnly?products.filter(p=>saved.has(p.product_id)):products).filter(p=>{
    const hay=[p.name,p.description,p.brand,p.category_name].join(" ").toLowerCase();
    const match=!term||hay.includes(term);
-   const matchCategory=category==="all"||category==="new"||String(p.category_name||"").toLowerCase()===category;
+   const matchCategory=category==="all"||category==="new"||String(p.category_slug||"").toLowerCase()===category||String(p.category_name||"").toLowerCase()===category;
    return match&&matchCategory;
   });
   if(category==="new")list=list.slice(0,12);
@@ -95,6 +95,11 @@
   grid.querySelectorAll("[data-save]").forEach(btn=>btn.addEventListener("click",()=>toggleSaved(btn.dataset.save)));
   grid.querySelectorAll("[data-open]").forEach(btn=>btn.addEventListener("click",()=>openProduct(btn.dataset.open)));
  }
+ function renderCategories(items){
+  const host=document.getElementById("dynamicCategoryNav");
+  if(!host)return;
+  host.innerHTML=(items||[]).map(c=>'<button type="button" data-category="'+escapeHTML(c.slug)+'">'+escapeHTML(c.name)+'</button>').join("");
+ }
  function setActive(value){document.querySelectorAll("[data-category]").forEach(b=>b.classList.toggle("active",b.dataset.category===value));}
  function toggleSaved(id){if(saved.has(id))saved.delete(id);else saved.add(id);updateSaved();render();}
  function openProduct(id){
@@ -111,11 +116,18 @@
    const payload=await response.json();
    if(!response.ok||!payload.success||!Array.isArray(payload.products))throw new Error(payload.error||"Catalog unavailable");
    products=payload.products;
+   try{
+    const categoryResponse=await fetch('/api/categories?country='+encodeURIComponent(COUNTRY)+'&currency='+encodeURIComponent(CURRENCY),{headers:{Accept:"application/json"}});
+    const categoryPayload=await categoryResponse.json();
+    if(categoryResponse.ok&&categoryPayload.success&&Array.isArray(categoryPayload.categories))renderCategories(categoryPayload.categories);
+   }catch(categoryError){console.warn("Category discovery unavailable",categoryError);}
    document.getElementById("marketLabel").textContent=payload.country+" · "+payload.currency;
    render();
   }catch(error){products=[];state("The collection is taking a little break","We couldn’t connect to the live catalog. Please try again shortly. No demo products or fake prices are displayed.","Retry",loadProducts);console.error("Catalog request failed",error);}
  }
- document.querySelectorAll("[data-category]").forEach(btn=>btn.addEventListener("click",()=>{category=btn.dataset.category;setActive(category);document.getElementById("catalogTitle").textContent=category==="new"?"Fresh arrivals":category==="popular"?"Popular discoveries":"A little of everything";document.getElementById("catalog").scrollIntoView({behavior:"smooth"});render();}));
+ const categoryNav=document.querySelector(".nav");
+ categoryNav.addEventListener("click",event=>{const btn=event.target.closest("[data-category]");if(!btn)return;category=btn.dataset.category;setActive(category);document.getElementById("catalogTitle").textContent=category==="new"?"Fresh arrivals":category==="all"?"A little of everything":btn.textContent.trim();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});render();});
+ document.querySelectorAll(".discovery [data-category]").forEach(btn=>btn.addEventListener("click",()=>{category=btn.dataset.category;setActive(category);document.getElementById("catalog").scrollIntoView({behavior:"smooth"});render();}));
  search.addEventListener("input",render);document.getElementById("sortSelect").addEventListener("change",render);
  document.getElementById("savedToggle").addEventListener("click",()=>{if(!saved.size){state("Your saved finds","Save products with the heart icon and they’ll be waiting here when you return.");return;}savedOnly=!savedOnly;category="all";search.value="";setActive("all");document.getElementById("catalogTitle").textContent=savedOnly?"Your saved finds":"A little of everything";render();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});});
  document.getElementById("savedExplore").addEventListener("click",()=>document.getElementById("savedToggle").click());
