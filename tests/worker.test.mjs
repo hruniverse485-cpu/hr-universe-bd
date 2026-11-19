@@ -1263,3 +1263,97 @@ test("Bangladesh delivery dashboard JavaScript parses and does not persist owner
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
   assert.match(html, /does not book a courier/);
 });
+
+
+test("Bangladesh COD ledger is owner-only and records financial evidence pending review", async () => {
+  const calls = [];
+  const order = { id: "order-bd", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "DELIVERED" };
+  const DB = {
+    prepare(sql) {
+      return {
+        bind(...values) {
+          calls.push({ sql, values });
+          return {
+            first: async () => order,
+            run: async () => ({ meta: { changes: 1 } }),
+            all: async () => ({ results: [] })
+          };
+        }
+      };
+    }
+  };
+  const denied = await worker.fetch(request("/api/admin/orders/cod-ledger", "GET"), { DB, HR_ADMIN_API_TOKEN: "owner-secret" });
+  assert.equal(denied.status, 401);
+  const response = await worker.fetch(request("/api/admin/orders/cod-ledger", "POST", JSON.stringify({
+    order_id: "order-bd", entry_type: "CUSTOMER_COD_COLLECTED",
+    amount_minor: 25000, evidence_reference: "courier receipt #123"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret", HR_ADMIN_OWNER_LABEL: "OWNER"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.entry.status, "PENDING_REVIEW");
+  assert.equal(payload.entry.amount_minor, 25000);
+  assert.match(calls[1].sql, /INSERT INTO cod_reconciliation_entries/);
+  assert.match(calls[1].sql, /'PENDING_REVIEW'/);
+});
+
+test("COD collection ledger cannot be recorded before delivery", async () => {
+  const DB = {
+    prepare() {
+      return { bind() { return { first: async () => ({ id: "order-bd", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "OUT_FOR_DELIVERY" }) }; } };
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/cod-ledger", "POST", JSON.stringify({
+    order_id: "order-bd", entry_type: "CUSTOMER_COD_COLLECTED",
+    amount_minor: 1000, evidence_reference: "receipt"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /only after delivery/i);
+});
+
+test("Returned parcel inspection is evidence-only and never changes inventory", async () => {
+  const calls = [];
+  const DB = {
+    prepare(sql) {
+      return {
+        bind(...values) {
+          calls.push({ sql, values });
+          return {
+            first: async () => ({ id: "order-return", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "RETURNED" }),
+            run: async () => ({ meta: { changes: 1 } })
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/returns", "POST", JSON.stringify({
+    order_id: "order-return", parcel_condition: "SEALED_INTACT",
+    disposition: "RESTOCK_CANDIDATE", inspected_quantity: 1,
+    notes: "Seal and product visually inspected", evidence_reference: "photo-set-1"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.inspection.inventory_changed, false);
+  assert.match(calls[1].sql, /INSERT INTO order_return_inspections/);
+  assert.equal(calls.some((call) => /UPDATE inventory|INSERT INTO inventory/.test(call.sql)), false);
+});
+
+test("Damaged returned parcels cannot be marked as restock candidates", async () => {
+  const DB = {
+    prepare() {
+      return { bind() { return { first: async () => ({ id: "order-return", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "RETURNED" }) }; } };
+    }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/returns", "POST", JSON.stringify({
+    order_id: "order-return", parcel_condition: "DAMAGED",
+    disposition: "RESTOCK_CANDIDATE", inspected_quantity: 1, notes: "Damaged box"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 409);
+});
