@@ -44,7 +44,8 @@ The manual delivery API is code on `feature/global-hybrid-rebuild` only. Migrati
 
 ## COD financial evidence ledger (Feature branch; migration 0012)
 - `GET/POST/PATCH /api/admin/orders/cod-ledger` is owner-token protected and records BDT COD financial events separately: customer COD collected, courier settlement received, courier fee, return fee, customer refund and adjustment entries.
-- New entries are forced to `PENDING_REVIEW` and require an evidence reference. A separate owner review can mark an entry `VERIFIED` or `DISPUTED`; review is an internal evidence decision, not a bank confirmation. Courier settlement can only be recorded up to the total of VERIFIED customer-collection entries; collection and settlement caps are enforced inside the insert statement to resist concurrent over-recording. Disputed entries do not count toward the cap.
+- New entries are forced to `PENDING_REVIEW` and require an evidence reference. A separate owner review can mark an entry `VERIFIED` or `DISPUTED`; review is an internal evidence decision, not a bank confirmation.
+- The same evidence reference cannot be reused for the same order and financial event type. Customer-collection and courier-settlement caps are enforced in the database write itself; disputed entries remain included in conservative amount caps, while only verified customer collections support courier settlement records. Courier settlement can only be recorded up to the total of VERIFIED customer-collection entries; collection and settlement caps are enforced inside the insert statement to resist concurrent over-recording. Disputed entries do not count toward the cap.
 - Customer COD collection cannot be recorded before the order is manually marked `DELIVERED`. Courier settlement remains a separate ledger entry and is never inferred from delivery or collection.
 - Ledger entries are append-only in the operator workflow. Corrections should be recorded as separately evidenced adjustment entries; do not edit or delete prior financial history.
 - These records do not move funds, update the order's collected amount, mark an order financially settled, or initiate a refund.
@@ -53,4 +54,5 @@ The manual delivery API is code on `feature/global-hybrid-rebuild` only. Migrati
 - `GET/POST /api/admin/orders/returns` records physical parcel condition and disposition for returned Bangladesh BDT COD orders.
 - A damaged, incomplete, wrong or missing parcel cannot be marked as a restock candidate.
 - `RESTOCK_CANDIDATE` is only an inspection outcome. No inventory is changed by this endpoint. A separately authorized stock movement and quantity check are required before any item is saleable again.
+- Cumulative inspected quantity is enforced inside the insert statement to prevent simultaneous inspection requests from exceeding the order quantity.
 - Migration 0012 is additive and is not applied to production.
