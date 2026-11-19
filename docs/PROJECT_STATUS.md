@@ -187,3 +187,14 @@ At every work session, record the current branch/head commit, changed files, tes
 - CI run [#93](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44535402947) completed successfully on commit `46ba9153db9100e6547fb470176efdcc0f16ef70`: Worker syntax passed, all 34 Node tests passed, and all eight ordered migrations passed disposable SQLite validation.
 - Scope remains limited to the Feature branch. No production D1 migration, deployment, supplier connection/order, or change to `main` occurred.
 - Next: add stronger end-to-end-style mocked D1 tests for supplier offer state transitions and the order creation/idempotency/reservation path; then resolve stale duplicated checkpoint text in this status document.
+
+
+## Order idempotency request binding (2026-11-19)
+
+- Added additive migration 0009 with `orders.idempotency_request_hash`; existing orders remain intact and keep a NULL fingerprint until a new request is stored.
+- New COD order requests receive a SHA-256 fingerprint of canonicalized JSON. Reusing a key with a different fingerprint returns HTTP 409; an identical retry returns only the original order identity/status/timestamp, not internal fingerprint data.
+- The unique-key conflict path performs the same fingerprint comparison, covering simultaneous requests that race after the initial lookup.
+- Added disposable SQLite checks for migration column presence, legacy NULL compatibility, fingerprint persistence, and unique idempotency-key enforcement. Added Worker tests for mismatched payload rejection, identical retries, canonical JSON key ordering, fingerprint persistence, and concurrent-conflict source guard.
+- CI runs #101 and #102 passed on the request-binding implementation and regression tests; run #103 passed after the migration compatibility note update. Run #104 is expected for the latest migration-validator and canonicalization tests; do not treat this checkpoint as fully verified until it completes.
+- Current automated Worker suite contains 40 tests. These are mocked Worker/API tests plus disposable SQLite migration/trigger tests; they are not live Cloudflare D1 integration or real concurrent request tests.
+- No production D1 migration, deployment, payment activation, supplier order, or change to `main` occurred.
