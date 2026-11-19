@@ -2011,7 +2011,7 @@ async function manageCatalogAdmin(request, env) {
   if(!data||typeof data!=="object"||Array.isArray(data))return json({success:false,error:"Invalid catalog operation"},400);
   const audit=async(mutation,type,id,action,before,table,fields)=>{
     const after="json_object("+fields.map(k=>"'"+k+"', "+k).join(",")+")";
-    const log=env.DB.prepare("INSERT INTO catalog_admin_audit (id,entity_type,entity_id,action,actor,before_json,after_json) SELECT ?,?,?,?,?,?,"+after+" FROM "+table+" WHERE id=?")
+    const log=env.DB.prepare("INSERT INTO catalog_admin_audit (id,entity_type,entity_id,action,actor,before_json,after_json) VALUES (?,?,(SELECT id FROM "+table+" WHERE id=? AND changes()=1),?,?,?,(SELECT "+after+" FROM "+table+" WHERE id=?))")
       .bind(crypto.randomUUID(),type,id,action,text(env.HR_ADMIN_OWNER_LABEL,80)||"OWNER",before?JSON.stringify(before):null,id);
     const result=await env.DB.batch([mutation,log]);
     if(result[0]?.meta?.changes!==1||result[1]?.meta?.changes!==1)throw new Error("Catalog update and audit were not both committed");
