@@ -2057,19 +2057,19 @@ async function manageBangladeshCodDelivery(request, env) {
       }
     }
     if (updates.length === 0) return json({ success: true, unchanged: true, order_id: orderId });
-    updates.push("delivery_updated_at = CURRENT_TIMESTAMP");
+    // Use a unique timestamp as a conditional audit marker. D1 batch is
+    // transactional: the order update and its event either both commit or
+    // both roll back. The INSERT ... SELECT only writes an event when this
+    // exact conditional update changed the order.
+    const auditTimestamp = new Date().toISOString();
+    updates.push("delivery_updated_at = ?");
+    values.push(auditTimestamp);
     if (nextStatus === "DELIVERED" && currentStatus !== "DELIVERED") updates.push("delivered_at = CURRENT_TIMESTAMP");
     if (before.total_minor !== null && before.total_minor !== undefined) {
       updates.push("cod_amount_minor = COALESCE(cod_amount_minor, ?)");
       values.push(before.total_minor);
     }
     values.push(orderId, currentStatus);
-    const result = await env.DB.prepare(
-      `UPDATE orders SET ${updates.join(", ")} WHERE id = ? AND COALESCE(delivery_status, 'NOT_DISPATCHED') = ?`
-    ).bind(...values).run();
-    if (!result.meta || result.meta.changes !== 1) {
-      return json({ success: false, error: "Order delivery data changed; refresh and retry" }, 409);
-    }
 
     const eventType = supplied.some(([key]) => ["courier_name","courier_service"].includes(key))
       ? "COURIER_ASSIGNED"
@@ -2081,12 +2081,30 @@ async function manageBangladeshCodDelivery(request, env) {
       next: nextStatus || currentStatus,
       changes: Object.fromEntries(supplied.map(([key, value]) => [key, value || null]))
     };
-    await env.DB.prepare(`INSERT INTO order_delivery_events
-      (id, order_id, event_type, previous_value, new_value, note, actor)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(
-        crypto.randomUUID(), orderId, eventType, currentStatus, JSON.stringify(event),
-        fields.delivery_notes || null, text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER"
-      ).run();
+    const eventId = crypto.randomUUID();
+    const statements = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE orders SET ${updates.join(", ")} WHERE id = ? AND COALESCE(delivery_status, 'NOT_DISPATCHED') = ?`
+      ).bind(...values),
+      env.DB.prepare(`INSERT INTO order_delivery_events
+        (id, order_id, event_type, previous_value, new_value, note, actor)
+        SELECT ?, ?, ?, ?, ?, ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM orders WHERE id = ? AND delivery_updated_at = ?
+        )`).bind(
+          eventId, orderId, eventType, currentStatus, JSON.stringify(event),
+          fields.delivery_notes || null, text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER",
+          orderId, auditTimestamp
+        )
+    ]);
+    if (!statements[0]?.meta || statements[0].meta.changes !== 1) {
+      return json({ success: false, error: "Order delivery data changed; refresh and retry" }, 409);
+    }
+    if (!statements[1]?.meta || statements[1].meta.changes !== 1) {
+      // This should be impossible when the conditional update succeeded;
+      // return an error rather than reporting an unaudited delivery change.
+      return json({ success: false, error: "Delivery audit event was not recorded" }, 500);
+    }
 
     return json({
       success: true,
