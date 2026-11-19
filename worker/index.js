@@ -2063,6 +2063,48 @@ async function manageCatalogAdmin(request, env) {
       await audit(mutation,"PRICE",id,"PRICE_CREATED_PENDING",null,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
       return json({success:true,price:await env.DB.prepare("SELECT * FROM product_prices WHERE id=?").bind(id).first()},201);
     }
+
+    if(data.operation==="set_variant_status"){
+      const id=text(data.id,100),status=text(data.status,20).toUpperCase();
+      if(!id||!["DRAFT","ACTIVE","PAUSED","ARCHIVED"].includes(status))return json({success:false,error:"Valid variant and status are required"},400);
+      const before=await env.DB.prepare("SELECT * FROM product_variants WHERE id=?").bind(id).first();
+      if(!before)return json({success:false,error:"Variant not found"},404);
+      const product=await env.DB.prepare("SELECT status FROM products WHERE id=?").bind(before.product_id).first();
+      if(status==="ACTIVE"&&(!product||product.status==="ARCHIVED"))return json({success:false,error:"Archived products cannot have active variants"},409);
+      const mutation=env.DB.prepare("UPDATE product_variants SET status=? WHERE id=? AND status=?").bind(status,id,before.status);
+      await audit(mutation,"VARIANT",id,"VARIANT_STATUS_CHANGED",before,"product_variants",["id","product_id","sku","variant_name","attributes_json","status"]);
+      return json({success:true,id,status});
+    }
+    if(data.operation==="set_price_status"){
+      const id=text(data.id,100),status=text(data.status,20).toUpperCase();
+      if(!id||!["PENDING","ACTIVE","INACTIVE"].includes(status))return json({success:false,error:"Valid price and status are required"},400);
+      const before=await env.DB.prepare("SELECT * FROM product_prices WHERE id=?").bind(id).first();
+      if(!before)return json({success:false,error:"Price not found"},404);
+      if(status==="ACTIVE"){
+        const eligible=await env.DB.prepare("SELECT 1 AS ok FROM products p JOIN categories c ON c.id=p.category_id AND c.is_active=1 JOIN countries co ON co.country_code=? AND co.currency_code=? AND co.is_active=1 JOIN currencies cu ON cu.code=? AND cu.is_active=1 WHERE p.id=? AND p.status<>'ARCHIVED' AND (? IS NULL OR EXISTS (SELECT 1 FROM product_variants v WHERE v.id=? AND v.product_id=p.id AND v.status='ACTIVE')) AND (? IS NULL OR datetime(?)<=datetime('now')) AND (? IS NULL OR datetime(?)>datetime('now'))")
+          .bind(before.country_code,before.currency_code,before.currency_code,before.product_id,before.variant_id,before.variant_id,before.valid_from,before.valid_from,before.valid_until,before.valid_until).first();
+        if(!eligible)return json({success:false,error:"Product category, market, variant or price validity is not eligible"},409);
+      }
+      const mutation=env.DB.prepare("UPDATE product_prices SET status=? WHERE id=? AND status=?").bind(status,id,before.status);
+      await audit(mutation,"PRICE",id,"PRICE_STATUS_CHANGED",before,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
+      return json({success:true,id,status});
+    }
+    if(data.operation==="set_product_status"){
+      const id=text(data.id,100),status=text(data.status,20).toUpperCase(),country=text(data.country_code,2).toUpperCase(),currency=text(data.currency_code,3).toUpperCase();
+      if(!id||!["DRAFT","ACTIVE","PAUSED","ARCHIVED"].includes(status))return json({success:false,error:"Valid product and status are required"},400);
+      const before=await env.DB.prepare("SELECT * FROM products WHERE id=?").bind(id).first();
+      if(!before)return json({success:false,error:"Product not found"},404);
+      if(status==="ACTIVE"){
+        if(!/^[A-Z]{2}$/.test(country)||!/^[A-Z]{3}$/.test(currency))return json({success:false,error:"Country and currency are required for activation"},400);
+        const age=integer(env.HR_INVENTORY_MAX_AGE_HOURS,1,720)||72;
+        const ready=await env.DB.prepare("SELECT 1 AS ok FROM products p JOIN categories c ON c.id=p.category_id AND c.is_active=1 JOIN countries co ON co.country_code=? AND co.currency_code=? AND co.is_active=1 JOIN currencies cu ON cu.code=? AND cu.is_active=1 WHERE p.id=? AND EXISTS (SELECT 1 FROM product_variants v JOIN inventory i ON i.variant_id=v.id AND i.product_id=p.id AND i.quantity>0 JOIN warehouses w ON w.id=i.warehouse_id AND w.country_code=co.country_code AND w.status='ACTIVE' WHERE v.product_id=p.id AND v.status='ACTIVE' AND i.verified_at IS NOT NULL AND datetime(i.verified_at)>=datetime('now',?)) AND EXISTS (SELECT 1 FROM product_prices pp WHERE pp.product_id=p.id AND pp.country_code=co.country_code AND pp.currency_code=co.currency_code AND pp.status='ACTIVE' AND (pp.variant_id IS NULL OR EXISTS (SELECT 1 FROM product_variants v2 WHERE v2.id=pp.variant_id AND v2.product_id=p.id AND v2.status='ACTIVE')) AND (pp.valid_from IS NULL OR datetime(pp.valid_from)<=datetime('now')) AND (pp.valid_until IS NULL OR datetime(pp.valid_until)>datetime('now')))")
+          .bind(country,currency,currency,id,"-"+age+" hours").first();
+        if(!ready)return json({success:false,error:"Activation requires active category and market, fresh verified warehouse stock, an active variant and valid active market price"},409);
+      }
+      const mutation=env.DB.prepare("UPDATE products SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?").bind(status,id,before.status);
+      await audit(mutation,"PRODUCT",id,"PRODUCT_STATUS_CHANGED",before,"products",["id","category_id","name","slug","description","brand","status","updated_at"]);
+      return json({success:true,id,status});
+    }
     return json({success:false,error:"Unknown catalog operation"},400);
   }catch(error){
     if(/UNIQUE constraint failed|FOREIGN KEY constraint failed|CHECK constraint failed/.test(error?.message||""))return json({success:false,error:"Catalog change conflicts with a database rule"},409);
