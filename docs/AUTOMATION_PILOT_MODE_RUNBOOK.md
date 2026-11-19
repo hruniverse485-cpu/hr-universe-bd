@@ -74,4 +74,4 @@ This runbook and related code are on `feature/global-hybrid-rebuild`. Migration 
 - The API treats `inventory.quantity` as available units and subtracts active `RESERVED` order quantities from the physical count. It blocks a physical count below reserved units.
 - Inventory quantity update and append-only verification evidence are written in one D1 batch. A stale concurrent edit is rejected; retry only after refreshing the inventory row.
 - This workflow does not contact suppliers, synchronize supplier stock, book couriers, or change customer orders.
-- The public catalog currently requires positive inventory with a non-null verification timestamp. A maximum verification age policy is still pending; operators must not treat an old timestamp as proof of current stock.
+- The public catalog requires positive inventory with a non-null verification timestamp no older than `HR_INVENTORY_MAX_AGE_HOURS` (1–720 hours; default 72). The owner dashboard flags stale rows so they can be recounted before they return to the public catalog.
