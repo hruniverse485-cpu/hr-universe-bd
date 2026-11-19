@@ -53,7 +53,7 @@ try:
     required_order_columns = {
         "country_code", "currency_code", "subtotal_minor",
         "shipping_cost_minor", "tax_minor", "total_minor",
-        "fulfillment_type", "idempotency_key",
+        "fulfillment_type", "idempotency_key", "idempotency_request_hash",
     }
     missing_columns = sorted(required_order_columns - order_columns)
     if missing_columns:
@@ -100,6 +100,23 @@ try:
         )
 
     insert_order("order-a")
+    legacy_hash = db.execute(
+        "SELECT idempotency_request_hash FROM orders WHERE id='order-a'"
+    ).fetchone()[0]
+    if legacy_hash is not None:
+        fail("Legacy orders must retain a NULL request fingerprint after migration 0009")
+
+    fingerprint = "a" * 64
+    db.execute(
+        "UPDATE orders SET idempotency_key='legacy-test-key', idempotency_request_hash=? WHERE id='order-a'",
+        (fingerprint,),
+    )
+    stored_fingerprint = db.execute(
+        "SELECT idempotency_request_hash FROM orders WHERE id='order-a'"
+    ).fetchone()[0]
+    if stored_fingerprint != fingerprint:
+        fail("Order request fingerprint was not persisted")
+
     db.execute(
         """INSERT INTO order_items (
             id, order_id, product_id, variant_id, product_name_snapshot,
@@ -127,6 +144,18 @@ try:
     db.commit()
 
     insert_order("order-b")
+    try:
+        db.execute(
+            "UPDATE orders SET idempotency_key='legacy-test-key' WHERE id='order-b'"
+        )
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        fail("Duplicate non-NULL idempotency key was accepted")
+    if db.execute(
+        "SELECT idempotency_key FROM orders WHERE id='order-b'"
+    ).fetchone()[0] is not None:
+        fail("Rejected duplicate idempotency key changed the second order")
     db.commit()
     try:
         with db:
