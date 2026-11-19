@@ -288,3 +288,19 @@ test("private supplier dashboard does not persist owner token", () => {
   assert.doesNotMatch(page, /localStorage|sessionStorage/);
   assert.match(page, /\/api\/admin\/sourcing\/offers/);
 });
+
+
+test("supplier offer audit listing is owner-authenticated and scoped by entity", async () => {
+  const response = await worker.fetch(request("/api/admin/sourcing/offers?view=audit&entity_id=offer-1", "GET", undefined, {
+    authorization: "Bearer owner-secret"
+  }), {
+    HR_ADMIN_API_TOKEN: "owner-secret",
+    DB: { prepare(sql) {
+      assert.match(sql, /FROM supplier_offer_audit WHERE entity_id = \?/);
+      return { bind(id, limit) { assert.equal(id, "offer-1"); assert.equal(limit, 50); return { all: async () => ({ results: [{ action: "OFFER_CREATED" }] }) }; } };
+    } }
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.audit[0].action, "OFFER_CREATED");
+});
