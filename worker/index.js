@@ -291,9 +291,19 @@ async function manageSupplierOffers(request, env) {
     data = JSON.parse(raw);
   } catch { return json({ success: false, error: "Invalid JSON request" }, 400); }
   if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "Invalid sourcing operation" }, 400);
-  const audit = async (type, id, action, before, after) => env.DB.prepare(
-    "INSERT INTO supplier_offer_audit (id,entity_type,entity_id,action,actor,before_json,after_json) VALUES (?,?,?,?,?,?,?)"
-  ).bind(crypto.randomUUID(), type, id, action, "OWNER_TOKEN", before ? JSON.stringify(before) : null, after ? JSON.stringify(after) : null).run();
+  const commitAudited = async (mutation, type, id, action, before, table, fields) => {
+    // D1 batch is transactional: the business mutation and its audit snapshot
+    // either both commit or both roll back.
+    const afterJson = "json_object(" + fields.map(field => "'" + field + "', " + field).join(",") + ")";
+    const auditStatement = env.DB.prepare(
+      "INSERT INTO supplier_offer_audit (id,entity_type,entity_id,action,actor,before_json,after_json) " +
+      "SELECT ?,?,?,?,?,?," + afterJson + " FROM " + table + " WHERE id=?"
+    ).bind(
+      crypto.randomUUID(), type, id, action, "OWNER_TOKEN",
+      before ? JSON.stringify(before) : null, id
+    );
+    await env.DB.batch([mutation, auditStatement]);
+  };
   try {
     if (data.operation === "save_offer") {
       const id = text(data.id,100) || crypto.randomUUID(), source = text(data.source_id,100);
@@ -310,10 +320,10 @@ async function manageSupplierOffers(request, env) {
       if (before && (before.source_id!==source || before.product_id!==product || before.variant_id!==variant || before.supplier_variant_id!==external))
         return json({success:false,error:"Offer identity is immutable; create a new offer instead"},409);
       if (before && before.approval_status==="ACTIVE") return json({success:false,error:"Pause an ACTIVE offer before editing it"},409);
-      await env.DB.prepare("INSERT INTO supplier_variant_offers (id,source_id,product_id,variant_id,supplier_variant_id,supplier_sku,source_unit_cost_minor,source_currency_code,availability_status,approval_status,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'DISCOVERED',CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET supplier_sku=excluded.supplier_sku,source_unit_cost_minor=excluded.source_unit_cost_minor,source_currency_code=excluded.source_currency_code,availability_status=excluded.availability_status,updated_at=CURRENT_TIMESTAMP")
-        .bind(id,source,product,variant,external,text(data.supplier_sku,120)||null,cost,currency,availability).run();
+      const mutation = env.DB.prepare("INSERT INTO supplier_variant_offers (id,source_id,product_id,variant_id,supplier_variant_id,supplier_sku,source_unit_cost_minor,source_currency_code,availability_status,approval_status,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'DISCOVERED',CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET supplier_sku=excluded.supplier_sku,source_unit_cost_minor=excluded.source_unit_cost_minor,source_currency_code=excluded.source_currency_code,availability_status=excluded.availability_status,updated_at=CURRENT_TIMESTAMP")
+        .bind(id,source,product,variant,external,text(data.supplier_sku,120)||null,cost,currency,availability);
+      await commitAudited(mutation,"OFFER",id,before?"OFFER_UPDATED":"OFFER_CREATED",before,"supplier_variant_offers",["id","source_id","product_id","variant_id","supplier_variant_id","supplier_sku","source_unit_cost_minor","source_currency_code","availability_status","approval_status","quality_score","service_score","packaging_score","delivery_score","packaging_status","supplier_branding_excluded","tracking_available","returns_supported","evidence_reference","verified_at","expires_at","created_at","updated_at"]);
       const after = await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
-      await audit("OFFER",id,before?"OFFER_UPDATED":"OFFER_CREATED",before,after);
       return json({success:true,offer:after},before?200:201);
     }
 
@@ -335,10 +345,10 @@ async function manageSupplierOffers(request, env) {
       if(!offer||offer.destination_currency!==currency)return json({success:false,error:"Offer, active destination or destination currency is invalid"},409);
       if(offer.source_currency_code!==currency&&!fxEvidence)return json({success:false,error:"Cross-currency quotes require FX evidence"},400);
       const before=await env.DB.prepare("SELECT * FROM supplier_variant_shipping_quotes WHERE id=?").bind(id).first();
-      await env.DB.prepare("INSERT INTO supplier_variant_shipping_quotes (id,offer_id,destination_country_code,shipping_method_code,shipping_cost_minor,currency_code,estimated_min_days,estimated_max_days,availability_status,source_to_destination_fx_numerator,source_to_destination_fx_denominator,fx_evidence_reference,quoted_at,expires_at) VALUES (?,?,?,?,?,?,?,?,'AVAILABLE',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET shipping_method_code=excluded.shipping_method_code,shipping_cost_minor=excluded.shipping_cost_minor,currency_code=excluded.currency_code,estimated_min_days=excluded.estimated_min_days,estimated_max_days=excluded.estimated_max_days,availability_status='AVAILABLE',source_to_destination_fx_numerator=excluded.source_to_destination_fx_numerator,source_to_destination_fx_denominator=excluded.source_to_destination_fx_denominator,fx_evidence_reference=excluded.fx_evidence_reference,quoted_at=excluded.quoted_at,expires_at=excluded.expires_at")
-        .bind(id,offerId,destination,method,cost,currency,minDays,maxDays,numerator,denominator,fxEvidence,quotedAt,expiresAt).run();
+      const mutation = env.DB.prepare("INSERT INTO supplier_variant_shipping_quotes (id,offer_id,destination_country_code,shipping_method_code,shipping_cost_minor,currency_code,estimated_min_days,estimated_max_days,availability_status,source_to_destination_fx_numerator,source_to_destination_fx_denominator,fx_evidence_reference,quoted_at,expires_at) VALUES (?,?,?,?,?,?,?,?,'AVAILABLE',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET shipping_method_code=excluded.shipping_method_code,shipping_cost_minor=excluded.shipping_cost_minor,currency_code=excluded.currency_code,estimated_min_days=excluded.estimated_min_days,estimated_max_days=excluded.estimated_max_days,availability_status='AVAILABLE',source_to_destination_fx_numerator=excluded.source_to_destination_fx_numerator,source_to_destination_fx_denominator=excluded.source_to_destination_fx_denominator,fx_evidence_reference=excluded.fx_evidence_reference,quoted_at=excluded.quoted_at,expires_at=excluded.expires_at")
+        .bind(id,offerId,destination,method,cost,currency,minDays,maxDays,numerator,denominator,fxEvidence,quotedAt,expiresAt);
+      await commitAudited(mutation,"SHIPPING_QUOTE",id,before?"QUOTE_UPDATED":"QUOTE_CREATED",before,"supplier_variant_shipping_quotes",["id","offer_id","destination_country_code","shipping_method_code","shipping_cost_minor","currency_code","estimated_min_days","estimated_max_days","availability_status","source_to_destination_fx_numerator","source_to_destination_fx_denominator","fx_evidence_reference","quoted_at","expires_at","created_at"]);
       const after=await env.DB.prepare("SELECT * FROM supplier_variant_shipping_quotes WHERE id=?").bind(id).first();
-      await audit("SHIPPING_QUOTE",id,before?"QUOTE_UPDATED":"QUOTE_CREATED",before,after);
       return json({success:true,quote:after},before?200:201);
     }
     if (data.operation === "verify_offer") {
@@ -352,10 +362,10 @@ async function manageSupplierOffers(request, env) {
       const before=await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
       if(!before)return json({success:false,error:"Supplier offer not found"},404);
       if(before.approval_status==="ACTIVE")return json({success:false,error:"Pause an ACTIVE offer before changing verification"},409);
-      await env.DB.prepare("UPDATE supplier_variant_offers SET quality_score=?,service_score=?,packaging_score=?,delivery_score=?,packaging_status=?,supplier_branding_excluded=?,tracking_available=?,returns_supported=?,evidence_reference=?,verified_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .bind(quality,service,packaging,delivery,packageStatus,data.supplier_branding_excluded===true?1:0,data.tracking_available===true?1:0,data.returns_supported===true?1:0,evidence,id).run();
+      const mutation = env.DB.prepare("UPDATE supplier_variant_offers SET quality_score=?,service_score=?,packaging_score=?,delivery_score=?,packaging_status=?,supplier_branding_excluded=?,tracking_available=?,returns_supported=?,evidence_reference=?,verified_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .bind(quality,service,packaging,delivery,packageStatus,data.supplier_branding_excluded===true?1:0,data.tracking_available===true?1:0,data.returns_supported===true?1:0,evidence,id);
+      await commitAudited(mutation,"OFFER",id,"OFFER_VERIFIED",before,"supplier_variant_offers",["id","source_id","product_id","variant_id","supplier_variant_id","supplier_sku","source_unit_cost_minor","source_currency_code","availability_status","approval_status","quality_score","service_score","packaging_score","delivery_score","packaging_status","supplier_branding_excluded","tracking_available","returns_supported","evidence_reference","verified_at","expires_at","created_at","updated_at"]);
       const after=await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
-      await audit("OFFER",id,"OFFER_VERIFIED",before,after);
       return json({success:true,offer:after});
     }
 
@@ -371,9 +381,9 @@ async function manageSupplierOffers(request, env) {
       }
       if (target==="ACTIVE" && (before.supplier_status!=="ACTIVE" || before.source_status!=="AVAILABLE" || before.availability_status!=="AVAILABLE" || !before.evidence_reference || !before.verified_at || before.quality_score==null || before.service_score==null || before.packaging_score==null || before.delivery_score==null || !["NEUTRAL_CONFIRMED","BRANDED_CONFIRMED"].includes(before.packaging_status) || Number(before.supplier_branding_excluded)!==1))
         return json({success:false,error:"ACTIVE requires an active supplier/source, available stock, verification evidence, all quality scores and confirmed supplier-branding-free packaging"},409);
-      await env.DB.prepare("UPDATE supplier_variant_offers SET approval_status=?,updated_at=CURRENT_TIMESTAMP,verified_at=CASE WHEN ?='ACTIVE' THEN COALESCE(verified_at,CURRENT_TIMESTAMP) ELSE verified_at END WHERE id=?").bind(target,target,id).run();
+      const mutation = env.DB.prepare("UPDATE supplier_variant_offers SET approval_status=?,updated_at=CURRENT_TIMESTAMP,verified_at=CASE WHEN ?='ACTIVE' THEN COALESCE(verified_at,CURRENT_TIMESTAMP) ELSE verified_at END WHERE id=?").bind(target,target,id);
+      await commitAudited(mutation,"OFFER",id,"STATUS_"+target,before,"supplier_variant_offers",["id","source_id","product_id","variant_id","supplier_variant_id","supplier_sku","source_unit_cost_minor","source_currency_code","availability_status","approval_status","quality_score","service_score","packaging_score","delivery_score","packaging_status","supplier_branding_excluded","tracking_available","returns_supported","evidence_reference","verified_at","expires_at","created_at","updated_at"]);
       const after=await env.DB.prepare("SELECT * FROM supplier_variant_offers WHERE id=?").bind(id).first();
-      await audit("OFFER",id,"STATUS_"+target,before,after);
       return json({success:true,offer:after});
     }
     return json({success:false,error:"operation must be save_offer, save_quote, verify_offer or transition"},400);
