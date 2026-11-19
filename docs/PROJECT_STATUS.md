@@ -1,6 +1,6 @@
 # HR UNIVERSE — Project Status & Continuation Checkpoint
 
-Last reviewed: 2026-11-18 (owner-approved design and automation requirements recorded)  
+Last reviewed: 2026-11-19 (COD reconciliation, return inspection and catalog availability safeguards added)  
 Repository: `hruniverse485-cpu/hr-universe-bd`  
 Active development branch: `feature/global-hybrid-rebuild`  
 Stable branch: `main` (do not modify or merge without explicit owner approval)
@@ -14,6 +14,9 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 - The Worker requires an active Bangladesh country/currency configuration and an active local-warehouse shipping rate before accepting an order.
 - The Worker writes the legacy order row and corresponding `order_items` in one D1 batch.
 - `public/index.html` has been replaced with an original premium, low-pressure discovery storefront. It fetches products from `/api/products` for BD/BDT, supports search, category navigation, sorting, saved products, product detail modal, responsive layouts, and reduced-motion preferences. It shows no hard-coded sample products and no fake-order fallback. It is currently a browsing/catalog experience; customer checkout is intentionally not exposed in this iteration.
+- `/api/products` now excludes products unless they have at least one ACTIVE variant with positive inventory in an ACTIVE warehouse for the requested country and a non-null stock verification timestamp. It returns the summed remaining quantity and `LOCAL_WAREHOUSE` fulfillment type. A freshness-age policy is not yet implemented, so this is not a guarantee that stock was rechecked recently.
+- Migration `0012_bangladesh_cod_reconciliation_returns.sql` adds an owner-only COD evidence ledger and returned-parcel inspection records. The API caps customer collection at the server order total, caps courier settlement and customer refunds at verified customer COD collections, prevents duplicate evidence references, and records new entries pending owner review. Returned inspection quantities are capped atomically; inspection never changes inventory.
+- `public/admin-cod-operations.html` provides the owner-only COD ledger and return inspection interface. It keeps the bearer token in page memory only and does not persist it in browser storage.
 - `public/HR_UNIVERSE_V2_preview_index.html` is a preview, not a production-ready global storefront. It explicitly labels its catalog as preview-only.
 - `worker/schema.sql` contains the legacy `orders` base table. Marketplace tables and columns are added by ordered migrations.
 - International payment acceptance, live supplier integrations, verified warehouse inventory, customer accounts, admin authentication, refunds, AI shopping, and image search are not implemented as production-ready features.
@@ -39,6 +42,7 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 ## Validation added in this checkpoint
 
 - `.github/workflows/validate.yml` runs Worker syntax validation, automated Worker API route tests, and the SQLite migration validator on Feature-branch pushes, pull requests, and manual dispatch.
+- GitHub Actions run #219 (2026-11-19, commit tested via temporary validation PR against Feature branch `abc38617b45a9da75739c1d29a8e494e628c2ed0`) passed all three validation steps: Worker syntax, Worker API tests, and ordered migration validation. This is code/schema validation only, not production deployment or live integration verification.
 - `tests/worker.test.mjs` adds Node built-in tests for health checks, route/method handling, invalid product-market parameters, malformed/oversized order payloads, database availability, and the unauthenticated order-management boundary.
 - `scripts/validate-migrations.py` applies the legacy base schema followed by every ordered SQL migration to an in-memory SQLite database, checks required marketplace tables and order columns, and checks foreign keys. Migrations are one-time ordered schema changes; do not reapply them to an already-migrated database.
 - The first GitHub Actions run (run #3, commit `82a060b`) completed successfully: Worker JavaScript syntax check passed, all four SQL migrations applied to a disposable in-memory SQLite database, required marketplace tables/columns were present, and foreign-key checks were clean. This validates syntax and migration compatibility only; it is not an end-to-end or production test.
@@ -52,7 +56,8 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 
 ## Next implementation sequence
 
-1. Extend backend integration coverage for full COD order creation, pricing, shipping, idempotent retries, and concurrent reservation scenarios.
+1. Add an inventory verification freshness policy and owner workflow so stale stock cannot remain publicly listed indefinitely.
+2. Extend backend integration coverage for full COD order creation, pricing, shipping, idempotent retries, and concurrent reservation scenarios.
 2. Extend the API-backed premium storefront with real category metadata, verified product imagery/details, and accessibility/browser checks; keep checkout disabled until payment and market prerequisites are met.
 3. Implement authentication and role-based authorization before exposing any admin or customer-private endpoints.
 4. Implement customer accounts, cart, order history/tracking, and support workflows.
