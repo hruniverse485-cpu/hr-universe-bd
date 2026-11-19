@@ -1203,7 +1203,7 @@ test("Bangladesh COD delivery sets delivered_at only on confirmed DELIVERED tran
   });
   assert.equal(response.status, 200);
   assert.match(updateSql, /delivered_at = CURRENT_TIMESTAMP/);
-  assert.match(updateSql, /cod_amount_minor = COALESCE\\(cod_amount_minor, \\?\\)/);
+  assert.ok(updateSql.includes("cod_amount_minor = COALESCE(cod_amount_minor, ?)"));
 });
 
 test("Bangladesh COD delivery reports audit failure when the D1 batch fails", async () => {
