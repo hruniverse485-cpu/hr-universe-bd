@@ -930,3 +930,41 @@ test("partner operations dashboard inline JavaScript parses", () => {
   assert.match(html, /OWNER ACCESS ONLY/);
   assert.match(html, /No email, WhatsApp, SMS or call is sent/);
 });
+
+
+test("courier rate cards require owner authentication", async () => {
+  const response = await worker.fetch(request("/api/admin/partners/courier-rates"), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 401);
+});
+
+test("courier rate card creation forces unverified status", async () => {
+  const calls = [];
+  const DB = { prepare(sql) { calls.push({ sql, values: [] }); return { bind(...values) { calls[calls.length - 1].values = values; return { first: async () => ({ id: "courier-1", code: "BDT" }), run: async () => ({ success: true }), all: async () => ({ results: [] }) }; } }; } };
+  const response = await worker.fetch(
+    request("/api/admin/partners/courier-rates", "POST", JSON.stringify({
+      courier_id: "courier-1", rate_name: "Dhaka standard",
+      destination_district: "Dhaka", base_fee_minor: 700,
+      cod_fee_minor: 10, return_fee_minor: 500, currency_code: "BDT",
+      verification_status: "VERIFIED"
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.rate_card.verification_status, "UNVERIFIED");
+  assert.match(calls[2].sql, /'UNVERIFIED'/);
+});
+
+test("courier rate cards reject invalid fees and unsupported methods", async () => {
+  const DB = { prepare() { return { bind() { return { first: async () => ({ id: "courier-1" }) }; } }; } };
+  const response = await worker.fetch(
+    request("/api/admin/partners/courier-rates", "POST", JSON.stringify({
+      courier_id: "courier-1", rate_name: "Invalid", base_fee_minor: -1
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 400);
+});
