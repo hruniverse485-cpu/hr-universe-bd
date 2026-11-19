@@ -34,7 +34,7 @@ Migration 0010 is additive and belongs to the isolated `feature/global-hybrid-re
 - `GET /api/admin/orders/delivery` lists at most 100 Bangladesh BDT COD orders. It requires the owner bearer token and excludes orders without explicit BD/BDT classification.
 - `PATCH /api/admin/orders/delivery` records courier name/service, consignment ID, HTTPS tracking URL, internal delivery notes and an allowed delivery-status transition.
 - Status transitions are constrained: NOT_DISPATCHED → READY_TO_SHIP → SHIPPED → IN_TRANSIT → OUT_FOR_DELIVERY → DELIVERED, with explicit failure/return branches. A courier must be assigned before SHIPPED.
-- Each successful change creates an `order_delivery_events` audit record. Updates use an optimistic status check to reject stale concurrent edits.
+- Each successful change and its `order_delivery_events` audit record are written in one transactional D1 batch. The event insert is conditional on the exact unique update marker, so stale edits cannot create orphan audit events; a batch failure rolls back both changes. Updates use an optimistic status check to reject stale concurrent edits.
 - The API initializes COD due from the server-calculated `total_minor` when available. It never changes `cod_collected_minor`, never records a courier payout, and never books a courier or sends customer notifications.
 - Only an authorized operator can use the API. The owner token must be supplied at request time and must not be stored in browser local/session storage.
 - The endpoint is not a substitute for the pending operator dashboard, real courier integration, verified rate cards, proof-of-delivery checks or COD settlement ledger.
