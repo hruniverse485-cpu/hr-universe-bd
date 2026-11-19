@@ -1295,7 +1295,7 @@ test("Bangladesh COD ledger is owner-only and records financial evidence pending
   assert.equal(payload.entry.status, "PENDING_REVIEW");
   assert.equal(payload.entry.amount_minor, 25000);
   assert.match(calls[2].sql, /INSERT INTO cod_reconciliation_entries/);
-  assert.match(calls[1].sql, /'PENDING_REVIEW'/);
+  assert.match(calls[2].sql, /'PENDING_REVIEW'/);
 });
 
 test("COD collection ledger cannot be recorded before delivery", async () => {
