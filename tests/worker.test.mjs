@@ -1267,7 +1267,7 @@ test("Bangladesh delivery dashboard JavaScript parses and does not persist owner
 
 test("Bangladesh COD ledger is owner-only and records financial evidence pending review", async () => {
   const calls = [];
-  const order = { id: "order-bd", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "DELIVERED" };
+  const order = { id: "order-bd", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "DELIVERED", total_minor: 25000 };
   const DB = {
     prepare(sql) {
       return {
@@ -1322,7 +1322,7 @@ test("Returned parcel inspection is evidence-only and never changes inventory", 
         bind(...values) {
           calls.push({ sql, values });
           return {
-            first: async () => ({ id: "order-return", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "RETURNED" }),
+            first: async () => ({ id: "order-return", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "RETURNED", ordered_quantity: 1 }),
             run: async () => ({ meta: { changes: 1 } })
           };
         }
@@ -1346,7 +1346,7 @@ test("Returned parcel inspection is evidence-only and never changes inventory", 
 test("Damaged returned parcels cannot be marked as restock candidates", async () => {
   const DB = {
     prepare() {
-      return { bind() { return { first: async () => ({ id: "order-return", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "RETURNED" }) }; } };
+      return { bind() { return { first: async () => ({ id: "order-return", country_code: "BD", currency_code: "BDT", payment_method: "COD", delivery_status: "RETURNED", ordered_quantity: 1 }) }; } };
     }
   };
   const response = await worker.fetch(request("/api/admin/orders/returns", "POST", JSON.stringify({
