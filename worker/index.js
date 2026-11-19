@@ -274,6 +274,42 @@ async function createCodOrder(request, env) {
     }, 400);
   }
 
+  const idempotencyKey = text(
+    request.headers.get("Idempotency-Key") ||
+    data.idempotency_key,
+    100
+  );
+
+  if (!idempotencyKey || !/^[A-Za-z0-9._:-]{8,100}$/.test(idempotencyKey)) {
+    return json({
+      success: false,
+      error: "A valid Idempotency-Key header or idempotency_key is required"
+    }, 400);
+  }
+
+  try {
+    const existing = await env.DB.prepare(`
+      SELECT id, status, created_at
+      FROM orders
+      WHERE idempotency_key = ?
+    `).bind(idempotencyKey).first();
+
+    if (existing) {
+      return json({
+        success: true,
+        duplicate: true,
+        message: "This order request was already received",
+        order: existing
+      });
+    }
+  } catch (error) {
+    console.error("Idempotency lookup failed:", error);
+    return json({
+      success: false,
+      error: "Unable to verify whether this order was already received"
+    }, 503);
+  }
+
   const customer =
     data.customer && typeof data.customer === "object"
       ? data.customer
@@ -626,12 +662,6 @@ async function createCodOrder(request, env) {
 
     const orderId = crypto.randomUUID();
     const createdAt = new Date().toISOString();
-
-    const idempotencyKey = text(
-      request.headers.get("Idempotency-Key") ||
-      data.idempotency_key,
-      100
-    ) || crypto.randomUUID();
 
     const statements = [
       env.DB.prepare(`
