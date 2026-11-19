@@ -837,3 +837,57 @@ test("partner interaction log rejects unsupported methods", async () => {
   );
   assert.equal(response.status, 405);
 });
+
+
+test("partner contacts require owner authentication", async () => {
+  const response = await worker.fetch(request("/api/admin/partners/contacts"), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 401);
+});
+
+test("partner contact creation forces unverified and non-primary defaults", async () => {
+  const calls = [];
+  const DB = {
+    prepare(sql) {
+      calls.push({ sql, values: [] });
+      return { bind(...values) {
+        calls[calls.length - 1].values = values;
+        return { first: async () => ({ id: "supplier-1" }), run: async () => ({ success: true }), all: async () => ({ results: [] }) };
+      }};
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/admin/partners/contacts", "POST", JSON.stringify({
+      partner_type: "SUPPLIER", partner_id: "supplier-1",
+      contact_name: "Sales Desk", email: "sales@example.com",
+      verification_status: "VERIFIED", is_primary: true
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.contact.verification_status, "UNVERIFIED");
+  assert.equal(payload.contact.is_primary, false);
+  assert.match(calls[1].sql, /0, 'UNVERIFIED'/);
+});
+
+test("partner contact creation rejects malformed email and unsupported channel", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/partners/contacts", "POST", JSON.stringify({
+      partner_type: "COURIER", partner_id: "courier-1",
+      email: "not-an-email", preferred_channel: "SMS"
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 400);
+});
+
+test("partner contact directory rejects unsupported methods", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/partners/contacts", "DELETE", undefined, { authorization: "Bearer owner-secret" }),
+    { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 405);
+});
