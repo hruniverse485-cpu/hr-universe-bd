@@ -517,6 +517,7 @@ async function listProducts(request, env) {
 
         c.id AS category_id,
         c.name AS category_name,
+        c.slug AS category_slug,
 
         pp.price_minor,
         pp.compare_at_price_minor,
@@ -622,6 +623,60 @@ async function listProducts(request, env) {
       success: false,
       error: "Unable to load products"
     }, 500);
+  }
+}
+
+async function listCategories(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  const url = new URL(request.url);
+  const country = text(url.searchParams.get("country"), 2).toUpperCase();
+  const currency = text(url.searchParams.get("currency"), 3).toUpperCase();
+  if (!/^[A-Z]{2}$/.test(country) || !/^[A-Z]{3}$/.test(currency)) {
+    return json({ success: false, error: "Valid country and currency are required" }, 400);
+  }
+  const maxAge = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 72) || 72;
+  try {
+    const result = await env.DB.prepare(`
+      SELECT c.id, c.name, c.slug, c.parent_id, c.sort_order,
+        COUNT(DISTINCT p.id) AS product_count
+      FROM categories c
+      JOIN products p ON p.category_id = c.id AND p.status = 'ACTIVE'
+      JOIN product_prices pp ON pp.product_id = p.id
+        AND pp.variant_id IS NULL
+        AND pp.country_code = ?
+        AND pp.currency_code = ?
+        AND pp.status = 'ACTIVE'
+        AND (pp.valid_from IS NULL OR datetime(pp.valid_from) <= CURRENT_TIMESTAMP)
+        AND (pp.valid_until IS NULL OR datetime(pp.valid_until) > CURRENT_TIMESTAMP)
+      JOIN countries co ON co.country_code = pp.country_code
+        AND co.currency_code = pp.currency_code AND co.is_active = 1
+      JOIN currencies cu ON cu.code = pp.currency_code AND cu.is_active = 1
+      WHERE c.is_active = 1
+        AND EXISTS (
+          SELECT 1
+          FROM product_variants pv
+          JOIN inventory i ON i.product_id = p.id AND i.variant_id = pv.id
+          JOIN warehouses w ON w.id = i.warehouse_id
+          WHERE pv.product_id = p.id AND pv.status = 'ACTIVE'
+            AND w.country_code = co.country_code AND w.status = 'ACTIVE'
+            AND i.quantity > 0
+            AND i.verified_at IS NOT NULL
+            AND datetime(i.verified_at) >= datetime('now', ?)
+            AND datetime(i.verified_at) <= CURRENT_TIMESTAMP
+        )
+      GROUP BY c.id, c.name, c.slug, c.parent_id, c.sort_order
+      ORDER BY c.sort_order, c.name COLLATE NOCASE
+      LIMIT 100
+    `).bind(country, currency, `-${maxAge} hours`).all();
+    return json({
+      success: true, country, currency,
+      inventory_max_age_hours: maxAge,
+      count: (result.results || []).length,
+      categories: result.results || []
+    });
+  } catch (error) {
+    console.error("Public category listing failed:", error);
+    return json({ success: false, error: "Unable to load categories" }, 500);
   }
 }
 
@@ -2715,6 +2770,11 @@ export default {
         return json({ success: false, error: "Method not allowed" }, 405);
       }
       return compareSupplierOffers(request, env);
+    }
+
+    if (path === "/api/categories") {
+      if (request.method !== "GET") return json({ success: false, error: "Method not allowed" }, 405);
+      return listCategories(request, env);
     }
 
     if (path === "/api/products") {
