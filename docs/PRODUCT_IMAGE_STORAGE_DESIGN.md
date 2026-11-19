@@ -6,6 +6,10 @@ Product image upload is **not enabled yet**. The current `wrangler.toml` defines
 
 The public product query already reads the first `product_images.image_url` ordered by `sort_order`. Preserve that public read contract while designing a controlled storage pipeline.
 
+## Existing image schema confirmed
+
+Migration `0001_core_foundation.sql` defines `product_images` with `id`, `product_id`, nullable `variant_id`, required `image_url`, nullable `alt_text`, and `sort_order` (default 0), plus product/variant foreign keys. It has no storage key, media type, byte size, approval state, or lifecycle timestamps. The current public query selects the first image URL by sort order. Therefore a future migration must be additive and preserve existing image rows; do not repurpose `image_url` as an R2 object key or expose raw R2 keys.
+
 ## Required architecture before implementation
 
 1. **Private object storage:** create a dedicated Cloudflare R2 bucket for catalog media, then add an explicit Worker binding (for example `PRODUCT_MEDIA`) only after the bucket exists and the deployment environment is known. Production and preview/staging buckets must be separate.
@@ -32,5 +36,5 @@ The public product query already reads the first `product_images.image_url` orde
 ## Current status (2026-11-19)
 
 - Confirmed `wrangler.toml` has `ASSETS` and `DB` only; no R2 binding exists.
-- Confirmed the public product query already reads `product_images.image_url`; schema must be inspected before any image migration.
+- Confirmed the public product query reads `product_images.image_url` and inspected the original table definition. The current schema has no upload metadata or approval lifecycle.
 - No image upload route or R2 bucket has been created. No production resources or data were changed.
