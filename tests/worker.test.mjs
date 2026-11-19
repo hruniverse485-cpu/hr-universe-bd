@@ -1184,6 +1184,46 @@ test("Bangladesh COD delivery does not create an audit event after a stale condi
   assert.equal(batchLength, 2);
 });
 
+test("Bangladesh COD delivery sets delivered_at only on confirmed DELIVERED transition", async () => {
+  const before = {
+    id: "order-bd", status: "PENDING", country_code: "BD", currency_code: "BDT",
+    payment_method: "COD", total_minor: 25000, delivery_status: "OUT_FOR_DELIVERY"
+  };
+  let updateSql = "";
+  const DB = {
+    prepare(sql) {
+      return { bind() { if (sql.startsWith("UPDATE orders")) updateSql = sql; return { first: async () => before }; } };
+    },
+    async batch() { return [{ meta: { changes: 1 } }, { meta: { changes: 1 } }]; }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/delivery", "PATCH", JSON.stringify({
+    order_id: "order-bd", delivery_status: "DELIVERED"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 200);
+  assert.match(updateSql, /delivered_at = CURRENT_TIMESTAMP/);
+  assert.match(updateSql, /cod_amount_minor = COALESCE\\(cod_amount_minor, \\?\\)/);
+});
+
+test("Bangladesh COD delivery reports audit failure when the D1 batch fails", async () => {
+  const before = {
+    id: "order-bd", status: "PENDING", country_code: "BD", currency_code: "BDT",
+    payment_method: "COD", total_minor: 1000, delivery_status: "NOT_DISPATCHED"
+  };
+  const DB = {
+    prepare() { return { bind() { return { first: async () => before }; } }; },
+    async batch() { throw new Error("Simulated transactional batch failure"); }
+  };
+  const response = await worker.fetch(request("/api/admin/orders/delivery", "PATCH", JSON.stringify({
+    order_id: "order-bd", delivery_status: "READY_TO_SHIP"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 500);
+  assert.match((await response.json()).error, /Unable to update delivery record/);
+});
+
 test("Bangladesh COD delivery rejects invalid transitions and non-HTTPS tracking URLs", async () => {
   const before = {
     id: "order-bd", status: "PENDING", country_code: "BD", currency_code: "BDT",
