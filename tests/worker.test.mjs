@@ -383,3 +383,12 @@ test("supplier quote update rejects reassignment before mutation or audit batch"
   assert.match(result.error, /identity is immutable/i);
   assert.equal(batchCalled, false);
 });
+
+
+test("supplier FX conversion uses exact integer arithmetic for large minor-unit values", () => {
+  assert.match(workerSource, /function convertMinorByRatio/);
+  assert.match(workerSource, /BigInt\(minor\) \* BigInt\(numerator\)/);
+  assert.match(workerSource, /const rounded = \(product \+ divisor \/ 2n\) \/ divisor/);
+  assert.match(workerSource, /convertMinorByRatio\(/);
+  assert.doesNotMatch(workerSource, /Math\.round\(\s*Number\(row\.source_unit_cost_minor\)/);
+});
