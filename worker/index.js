@@ -527,7 +527,7 @@ async function listProducts(request, env) {
         'LOCAL_WAREHOUSE' AS fulfillment_type,
 
         (
-          SELECT COALESCE(SUM(i.quantity), 0)
+          SELECT COALESCE(MAX(i.quantity), 0)
           FROM product_variants pv
           JOIN inventory i ON i.product_id = p.id AND i.variant_id = pv.id
           JOIN warehouses w ON w.id = i.warehouse_id
