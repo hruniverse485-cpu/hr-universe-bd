@@ -79,6 +79,13 @@ The owner retains control of banking, payment credentials, legal declarations, p
 At every work session, record the current branch/head commit, changed files, test results, unresolved defects, blockers, and the next exact action. Never report a feature as complete without implementation and verification evidence.
 
 
+## Active product editor guard (2026-11-20)
+
+- The owner catalog dashboard now disables product-detail form controls while the selected product is ACTIVE and explains that the product must be paused before editing. Pausing refreshes the editor and makes the fields editable again.
+- Added dashboard regression assertions for the active-product lock and owner guidance.
+- GitHub Actions run `44601329674` completed successfully on commit `fdbd50ab9affc6a92e07acdd6bfb2c10febe1b1f`: Worker syntax check passed, all 117 Worker API tests passed, and SQL migration validation passed.
+- No production deployment, migration application, or paid service activation was performed.
+
 ## Catalog eligibility alignment and validation checkpoint (2026-11-20)
 
 - Product activation now requires a currently valid ACTIVE product-level (non-variant-specific) price. This matches the public product and category queries, which currently list only base product prices; a product with only a variant-specific price would otherwise activate but remain absent from the public catalog.
