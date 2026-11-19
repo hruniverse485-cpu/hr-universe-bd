@@ -104,8 +104,10 @@ try:
     ).fetchone()[0]
     if reservation_count != 2:
         fail(f"Expected two reservation ledger rows, got {reservation_count}")
+    db.commit()
 
     insert_order("order-b")
+    db.commit()
     try:
         with db:
             db.execute(
