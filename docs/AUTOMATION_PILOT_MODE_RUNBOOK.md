@@ -47,8 +47,9 @@ Pilot Mode is a controlled owner-operated trial of the Bangladesh courier and lo
 - Supplier local profile create/update and local quote capture APIs/UI.
 - Courier service-area capture and verification.
 - Rate-card validity/evidence checks and courier comparison engine.
-- Delivery assignment, tracking-event and exception workflows.
-- COD collection versus payout reconciliation and return inspection workflow.\n- Owner-only COD evidence ledger with review states and separate customer-collection versus courier-settlement entries.\n- Returned-parcel inspection capture; no automatic inventory restock.
+- Live courier tracking-event webhooks, proof-of-delivery and automated exception workflows.
+- Independent COD payout verification against courier statements/bank records; the current ledger is owner-entered evidence capture and review only.
+- Physical return inspection capture is implemented; separately authorized inventory restock and item-level stock movement controls remain pending.\n- Owner-only COD evidence ledger with review states and separate customer-collection versus courier-settlement entries.\n- Returned-parcel inspection capture; no automatic inventory restock.
 - Admin dashboard integration/navigation and operational role/access review.
 - Production D1 backup, migration dry run, rollback plan and explicit owner authorization.
 - Live courier API credentials, sandbox access and test booking/tracking/cancel/webhook/COD tests, only after a courier is selected and authorized.
