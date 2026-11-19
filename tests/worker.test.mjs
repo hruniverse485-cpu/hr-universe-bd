@@ -1414,6 +1414,39 @@ test("Catalog rejects invalid price and never activates it during creation", asy
   assert.equal(response.status,400);
 });
 
+test("Catalog price edits preserve identity and approval state and write an audit record", async () => {
+  const batches=[];
+  const DB={
+    prepare(sql){return{bind(...values){return{
+      first:async()=>{
+        if(sql.includes("SELECT id FROM products WHERE id=?"))return{id:"p1"};
+        if(sql.includes("SELECT co.is_active"))return{is_active:1,currency_active:1};
+        if(sql.includes("SELECT * FROM product_prices WHERE id=?"))return{id:"price-1",product_id:"p1",status:"PENDING",price_minor:1200};
+        return null;
+      },
+      sql,values
+    };}};},
+    batch:async statements=>{batches.push(statements);return[{meta:{changes:1}},{meta:{changes:1}}];}
+  };
+  const response=await worker.fetch(request("/api/admin/catalog","POST",JSON.stringify({
+    operation:"save_price",id:"price-1",product_id:"p1",country_code:"BD",currency_code:"BDT",price_minor:1500
+  }),{authorization:"Bearer owner-secret","content-type":"application/json"}),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  assert.equal(response.status,200);
+  assert.equal(batches.length,1);
+  assert.match(batches[0][0].sql,/UPDATE product_prices SET/);
+  assert.match(batches[0][0].sql,/status<>'ACTIVE'/);
+  assert.match(batches[0][1].sql,/INSERT INTO catalog_admin_audit/);
+});
+
+test("Catalog refuses to edit an active price until it is deactivated", async () => {
+  const DB={prepare(sql){return{bind(){return{first:async()=>sql.includes("SELECT id FROM products WHERE id=?")?{id:"p1"}:sql.includes("SELECT co.is_active")?{is_active:1,currency_active:1}:sql.includes("SELECT * FROM product_prices WHERE id=?")?{id:"price-1",product_id:"p1",status:"ACTIVE"}:null};}};}};
+  const response=await worker.fetch(request("/api/admin/catalog","POST",JSON.stringify({
+    operation:"save_price",id:"price-1",product_id:"p1",country_code:"BD",currency_code:"BDT",price_minor:1500
+  }),{authorization:"Bearer owner-secret","content-type":"application/json"}),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  assert.equal(response.status,409);
+  assert.match((await response.json()).error,/deactivate the price first/);
+});
+
 test("Catalog category hierarchy rejects circular parent assignment", async () => {
   let batchCalled=false;
   const DB={prepare(sql){return{bind(...values){return{first:async()=>{
@@ -1464,6 +1497,11 @@ test("Catalog dashboard script is valid and does not persist owner credentials",
   assert.match(html,/function resetCategoryForm\(\)/);
   assert.match(html,/f\.elements\.id\.value=item\.id/);
   assert.match(html,/operation:"save_category",\.\.\.d/);
+  assert.match(html,/id="cancelPriceEdit"/);
+  assert.match(html,/data-price-edit=/);
+  assert.match(html,/function fillPriceForm\(p\)/);
+  assert.match(html,/operation:"save_price"/);
+  assert.match(html,/Price updated; existing approval status preserved/);
   assert.match(html,/Category updated\./);
 
 });
