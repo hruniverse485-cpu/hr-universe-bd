@@ -133,6 +133,17 @@ async function compareSupplierOffers(request, env) {
         AND s.status = 'ACTIVE'
         AND q.availability_status = 'AVAILABLE'
         AND q.currency_code = c.currency_code
+        AND q.id = (
+          SELECT q2.id
+          FROM supplier_variant_shipping_quotes q2
+          WHERE q2.offer_id = svo.id
+            AND q2.destination_country_code = q.destination_country_code
+            AND q2.availability_status = 'AVAILABLE'
+            AND datetime(q2.quoted_at) <= CURRENT_TIMESTAMP
+            AND (q2.expires_at IS NULL OR datetime(q2.expires_at) > CURRENT_TIMESTAMP)
+          ORDER BY datetime(q2.quoted_at) DESC, q2.id DESC
+          LIMIT 1
+        )
         AND svo.verified_at IS NOT NULL
         AND datetime(svo.verified_at) <= CURRENT_TIMESTAMP
         AND (svo.expires_at IS NULL OR datetime(svo.expires_at) > CURRENT_TIMESTAMP)
