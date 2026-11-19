@@ -1474,6 +1474,26 @@ test("Catalog product activation is blocked without verified market stock and ac
   assert.equal(calls.some(x=>x.sql.includes("UPDATE products SET status")),false);
 });
 
+test("Catalog product activation rejects future-dated stock verification", async () => {
+  const calls=[];
+  const DB={prepare(sql){return{bind(...values){calls.push({sql,values});return{first:async()=>sql.includes("SELECT * FROM products")?{id:"p1",status:"DRAFT",category_id:"cat"}:null};}};}};
+  const response=await worker.fetch(request("/api/admin/catalog","POST",JSON.stringify({
+    operation:"set_product_status",id:"p1",status:"ACTIVE",country_code:"BD",currency_code:"BDT"
+  }),{authorization:"Bearer owner-secret","content-type":"application/json"}),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  assert.equal(response.status,409);
+  const readiness=calls.find(x=>x.sql.includes("SELECT 1 AS ok FROM products"));
+  assert.ok(readiness);
+  assert.match(readiness.sql,/datetime\(i\.verified_at\)<=CURRENT_TIMESTAMP/);
+});
+
+test("Inventory verification dashboard marks future timestamps as stale", async () => {
+  let query="";
+  const DB={prepare(sql){query=sql;return{bind(){return{all:async()=>({results:[]})};}};}};
+  const response=await worker.fetch(request("/api/admin/inventory/verification","GET"),{DB,HR_ADMIN_API_TOKEN:"owner-secret"});
+  assert.equal(response.status,200);
+  assert.match(query,/datetime\(i\.verified_at\) > CURRENT_TIMESTAMP/);
+});
+
 test("Catalog dashboard script is valid and does not persist owner credentials", () => {
   const html=readFileSync(new URL("../public/admin-catalog.html",import.meta.url),"utf8");
   const start=html.indexOf("<script>"),end=html.indexOf("</script>",start);
