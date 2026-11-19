@@ -1,7 +1,7 @@
 
 /**
  * HR UNIVERSE — Cloudflare Worker
- * Compatible with existing orders table and migrations 0002–0006.
+ * Compatible with existing orders table and migrations 0002–0008.
  * Database-backed product prices. Browser prices are never trusted.
  * Bangladesh COD only. International checkout remains disabled.
  */
