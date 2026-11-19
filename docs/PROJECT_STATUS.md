@@ -153,7 +153,7 @@ At every work session, record the current branch/head commit, changed files, tes
 - Offer identity (supplier source, HR product/variant, external supplier variant) cannot be rewritten in place. ACTIVE offers must be paused before editing.
 - Promotion to ACTIVE is blocked unless the supplier and source are active/available, stock is available, verification evidence and all four scores exist, packaging is confirmed neutral or HR-branded, supplier branding is excluded, and a current destination-valid shipping quote/FX evidence exists.
 - The endpoint requires `HR_ADMIN_API_TOKEN` as a Worker secret. No secret is stored in Git or D1.
-- This is an API foundation, not a complete admin UI or supplier integration. Shipping quote write and offer-evidence verification operations are now available through the same private API. A browser-based admin screen, richer role-based access, audit retention policy, and end-to-end operational review remain to be implemented. No supplier was activated, no supplier API was called, no production migration/deployment occurred, and `main` remains unchanged.
+- The private browser dashboard is implemented in `public/admin-sourcing.html`, including offer listing/editing, destination quote entry, verification evidence, controlled approval transitions, and audit-history snapshots. The private API currently uses a single owner token; richer role-based access, audit retention policy, supplier integration, and end-to-end operational review remain outstanding. No supplier was activated, no supplier API was called, no production migration/deployment occurred, and `main` remains unchanged.
 
 
 ## Private supplier control center UI (2026-11-19)
