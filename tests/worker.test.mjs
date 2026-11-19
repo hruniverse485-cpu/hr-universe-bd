@@ -7,9 +7,15 @@ const workerSource = readFileSync(
   new URL("../worker/index.js", import.meta.url),
   "utf8"
 );
-const { default: worker } = await import(
-  `data:text/javascript;base64,${Buffer.from(workerSource).toString("base64")}`
-);
+let worker;
+try {
+  ({ default: worker } = await import(
+    `data:text/javascript;base64,${Buffer.from(workerSource).toString("base64")}`
+  ));
+} catch (error) {
+  console.error("Worker module import failed:", error?.name, error?.message, error?.stack?.split("\\n").slice(-5).join("\\n"));
+  throw error;
+}
 
 function request(path, method = "GET", body, headers = {}) {
   return new Request(`https://hr-universe.test${path}`, {
