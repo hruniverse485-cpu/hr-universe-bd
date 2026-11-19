@@ -1972,6 +1972,104 @@ async function manageCourierPartners(request, env) {
 }
 
 
+
+async function manageCatalogAdmin(request, env) {
+  if (!env.DB) return json({success:false,error:"Database connection unavailable"},503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({success:false,error:"Owner catalog access is not configured"},503);
+  const auth=request.headers.get("Authorization")||"";
+  const token=auth.startsWith("Bearer ")?auth.slice(7):"";
+  if(!constantTimeEqual(token,env.HR_ADMIN_API_TOKEN)) return json({success:false,error:"Unauthorized"},401);
+  if(request.method==="GET"){
+    const url=new URL(request.url),view=text(url.searchParams.get("view")||"products",20);
+    const limit=Math.min(100,Math.max(1,Number(url.searchParams.get("limit"))||50));
+    try{
+      if(view==="categories"){
+        const rows=await env.DB.prepare("SELECT id,name,slug,parent_id,is_active,sort_order FROM categories ORDER BY sort_order,name LIMIT ?").bind(limit).all();
+        return json({success:true,categories:rows.results||[]});
+      }
+      if(view==="variants"){
+        const pid=text(url.searchParams.get("product_id"),100);
+        if(!pid)return json({success:false,error:"product_id is required"},400);
+        const rows=await env.DB.prepare("SELECT id,product_id,sku,variant_name,attributes_json,status,created_at FROM product_variants WHERE product_id=? ORDER BY created_at DESC LIMIT ?").bind(pid,limit).all();
+        return json({success:true,variants:rows.results||[]});
+      }
+      if(view==="prices"){
+        const pid=text(url.searchParams.get("product_id"),100);
+        if(!pid)return json({success:false,error:"product_id is required"},400);
+        const rows=await env.DB.prepare("SELECT id,product_id,variant_id,country_code,currency_code,price_minor,compare_at_price_minor,status,valid_from,valid_until FROM product_prices WHERE product_id=? ORDER BY created_at DESC LIMIT ?").bind(pid,limit).all();
+        return json({success:true,prices:rows.results||[]});
+      }
+      if(view!=="products")return json({success:false,error:"Unsupported catalog view"},400);
+      const rows=await env.DB.prepare("SELECT p.id,p.category_id,p.name,p.slug,p.description,p.brand,p.status,p.created_at,p.updated_at,c.name AS category_name,(SELECT COUNT(*) FROM product_variants v WHERE v.product_id=p.id) AS variant_count,(SELECT COUNT(*) FROM product_prices pp WHERE pp.product_id=p.id) AS price_count FROM products p LEFT JOIN categories c ON c.id=p.category_id ORDER BY p.updated_at DESC,p.created_at DESC LIMIT ?").bind(limit).all();
+      return json({success:true,products:rows.results||[]});
+    }catch(error){console.error("Catalog list failed:",error);return json({success:false,error:"Unable to load catalog"},500);}
+  }
+  if(request.method!=="POST")return json({success:false,error:"Method not allowed"},405);
+  let data;
+  try{const raw=await request.text();if(raw.length>12000)return json({success:false,error:"Request too large"},413);data=JSON.parse(raw);}
+  catch{return json({success:false,error:"Invalid JSON request"},400);}
+  if(!data||typeof data!=="object"||Array.isArray(data))return json({success:false,error:"Invalid catalog operation"},400);
+  const audit=async(mutation,type,id,action,before,table,fields)=>{
+    const after="json_object("+fields.map(k=>"'"+k+"', "+k).join(",")+")";
+    const log=env.DB.prepare("INSERT INTO catalog_admin_audit (id,entity_type,entity_id,action,actor,before_json,after_json) SELECT ?,?,?,?,?,?,"+after+" FROM "+table+" WHERE id=?")
+      .bind(crypto.randomUUID(),type,id,action,text(env.HR_ADMIN_OWNER_LABEL,80)||"OWNER",before?JSON.stringify(before):null,id);
+    const result=await env.DB.batch([mutation,log]);
+    if(result[0]?.meta?.changes!==1||result[1]?.meta?.changes!==1)throw new Error("Catalog update and audit were not both committed");
+  };
+  try{
+    if(data.operation==="save_product"){
+      const id=text(data.id,100)||crypto.randomUUID(),name=text(data.name,180),slug=text(data.slug,180).toLowerCase(),category=text(data.category_id,100);
+      if(!name||!category||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug))return json({success:false,error:"Product name, category and valid slug are required"},400);
+      if(!await env.DB.prepare("SELECT id FROM categories WHERE id=?").bind(category).first())return json({success:false,error:"Category not found"},409);
+      const before=await env.DB.prepare("SELECT * FROM products WHERE id=?").bind(id).first();
+      if(before?.status==="ACTIVE")return json({success:false,error:"Pause product before editing details"},409);
+      const mutation=before
+        ?env.DB.prepare("UPDATE products SET category_id=?,name=?,slug=?,description=?,brand=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status<>'ACTIVE'").bind(category,name,slug,text(data.description,5000)||null,text(data.brand,120)||null,id)
+        :env.DB.prepare("INSERT INTO products (id,category_id,name,slug,description,brand,status) VALUES (?,?,?,?,?,?,'DRAFT')").bind(id,category,name,slug,text(data.description,5000)||null,text(data.brand,120)||null);
+      await audit(mutation,"PRODUCT",id,before?"PRODUCT_UPDATED":"PRODUCT_CREATED",before,"products",["id","category_id","name","slug","description","brand","status","updated_at"]);
+      return json({success:true,product:await env.DB.prepare("SELECT * FROM products WHERE id=?").bind(id).first()},before?200:201);
+    }
+    if(data.operation==="save_variant"){
+      const id=text(data.id,100)||crypto.randomUUID(),pid=text(data.product_id,100),sku=text(data.sku,120).toUpperCase(),name=text(data.variant_name,180);
+      if(!pid||!/^[A-Z0-9][A-Z0-9._-]{1,119}$/.test(sku))return json({success:false,error:"Valid product and SKU are required"},400);
+      const product=await env.DB.prepare("SELECT status FROM products WHERE id=?").bind(pid).first();
+      if(!product)return json({success:false,error:"Product not found"},404);
+      if(product.status==="ACTIVE")return json({success:false,error:"Pause product before editing variants"},409);
+      let attrs=null;
+      if(data.attributes!==undefined){
+        if(!data.attributes||typeof data.attributes!=="object"||Array.isArray(data.attributes)||JSON.stringify(data.attributes).length>2000)return json({success:false,error:"Attributes must be a small JSON object"},400);
+        attrs=JSON.stringify(data.attributes);
+      }
+      const before=await env.DB.prepare("SELECT * FROM product_variants WHERE id=?").bind(id).first();
+      if(before&&(before.product_id!==pid||before.status==="ACTIVE"))return json({success:false,error:"Variant identity is immutable; pause product and create a new variant"},409);
+      const mutation=before
+        ?env.DB.prepare("UPDATE product_variants SET sku=?,variant_name=?,attributes_json=? WHERE id=? AND product_id=? AND status<>'ACTIVE'").bind(sku,name||null,attrs,id,pid)
+        :env.DB.prepare("INSERT INTO product_variants (id,product_id,sku,variant_name,attributes_json,status) VALUES (?,?,?,?,?,'DRAFT')").bind(id,pid,sku,name||null,attrs);
+      await audit(mutation,"VARIANT",id,before?"VARIANT_UPDATED":"VARIANT_CREATED",before,"product_variants",["id","product_id","sku","variant_name","attributes_json","status"]);
+      return json({success:true,variant:await env.DB.prepare("SELECT * FROM product_variants WHERE id=?").bind(id).first()},before?200:201);
+    }
+    if(data.operation==="save_price"){
+      const id=text(data.id,100)||crypto.randomUUID(),pid=text(data.product_id,100),vid=text(data.variant_id,100)||null,country=text(data.country_code,2).toUpperCase(),currency=text(data.currency_code,3).toUpperCase(),price=integer(data.price_minor,1,Number.MAX_SAFE_INTEGER);
+      const compare=data.compare_at_price_minor==null||data.compare_at_price_minor===""?null:integer(data.compare_at_price_minor,price||1,Number.MAX_SAFE_INTEGER);
+      if(!pid||!/^[A-Z]{2}$/.test(country)||!/^[A-Z]{3}$/.test(currency)||price===null||(data.compare_at_price_minor!=null&&data.compare_at_price_minor!==""&&compare===null))return json({success:false,error:"Valid product, market and minor-unit price are required"},400);
+      const product=await env.DB.prepare("SELECT id FROM products WHERE id=?").bind(pid).first();
+      const market=await env.DB.prepare("SELECT co.is_active,cu.is_active AS currency_active FROM countries co JOIN currencies cu ON cu.code=co.currency_code WHERE co.country_code=? AND co.currency_code=?").bind(country,currency).first();
+      const variant=vid?await env.DB.prepare("SELECT id FROM product_variants WHERE id=? AND product_id=?").bind(vid,pid).first():true;
+      if(!product||!market||!variant)return json({success:false,error:"Product, market or variant relationship is invalid"},409);
+      if(!market.is_active||!market.currency_active)return json({success:false,error:"Market and currency must be active"},409);
+      const from=text(data.valid_from,40)||null,until=text(data.valid_until,40)||null;
+      if((from&&Number.isNaN(Date.parse(from)))||(until&&Number.isNaN(Date.parse(until)))||(from&&until&&Date.parse(until)<=Date.parse(from)))return json({success:false,error:"Invalid price validity window"},400);
+      const mutation=env.DB.prepare("INSERT INTO product_prices (id,product_id,variant_id,country_code,currency_code,price_minor,compare_at_price_minor,status,valid_from,valid_until) VALUES (?,?,?,?,?,?,?,'PENDING',?,?)").bind(id,pid,vid,country,currency,price,compare,from,until);
+      await audit(mutation,"PRICE",id,"PRICE_CREATED_PENDING",null,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
+      return json({success:true,price:await env.DB.prepare("SELECT * FROM product_prices WHERE id=?").bind(id).first()},201);
+    }
+    return json({success:false,error:"Unknown catalog operation"},400);
+  }catch(error){
+    if(/UNIQUE constraint failed|FOREIGN KEY constraint failed|CHECK constraint failed/.test(error?.message||""))return json({success:false,error:"Catalog change conflicts with a database rule"},409);
+    console.error("Catalog admin mutation failed:",error);return json({success:false,error:"Unable to save catalog change"},500);
+  }
+}
+
 async function manageInventoryVerification(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner inventory access is not configured" }, 503);
@@ -2517,6 +2615,7 @@ export default {
     if (path === "/api/admin/orders/cancel") return cancelPendingOrder(request, env);
 
     if (path === "/api/admin/orders/delivery") return manageBangladeshCodDelivery(request, env);
+    if (path === "/api/admin/catalog") return manageCatalogAdmin(request, env);
     if (path === "/api/admin/inventory/verification") return manageInventoryVerification(request, env);
     if (path === "/api/admin/orders/cod-ledger") return manageBangladeshCodLedger(request, env);
     if (path === "/api/admin/orders/returns") return manageBangladeshReturnInspections(request, env);
