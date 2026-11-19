@@ -154,3 +154,12 @@ At every work session, record the current branch/head commit, changed files, tes
 - Promotion to ACTIVE is blocked unless the supplier and source are active/available, stock is available, verification evidence and all four scores exist, packaging is confirmed neutral or HR-branded, supplier branding is excluded, and a current destination-valid shipping quote/FX evidence exists.
 - The endpoint requires `HR_ADMIN_API_TOKEN` as a Worker secret. No secret is stored in Git or D1.
 - This is an API foundation, not a complete admin UI or supplier integration. Shipping quote write and offer-evidence verification operations are now available through the same private API. A browser-based admin screen, richer role-based access, audit retention policy, and end-to-end operational review remain to be implemented. No supplier was activated, no supplier API was called, no production migration/deployment occurred, and `main` remains unchanged.
+
+
+## Private supplier control center UI (2026-11-19)
+
+- Added `public/admin-sourcing.html`, a responsive owner-only sourcing dashboard served as a static asset. It provides offer listing/selection, offer creation/update, destination shipping quote entry, verification evidence/score entry, and approval-state transitions.
+- Added authenticated GET listing to `/api/admin/sourcing/offers`; the same `HR_ADMIN_API_TOKEN` is required for both listing and write operations.
+- The browser keeps the token only in page memory, clears the password field after connection, does not use localStorage/sessionStorage, and offers explicit disconnect/clear. The page is marked noindex.
+- The dashboard does not contact suppliers, place orders, or execute payments. It is not production-accessible until the Worker is deployed with `HR_ADMIN_API_TOKEN` configured and migration 0008 is applied to the target D1 database. No production deployment or migration was performed.
+- CI run #74 passed Worker syntax, all 29 Node tests, and ordered migration validation.
