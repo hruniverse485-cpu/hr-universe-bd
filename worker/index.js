@@ -2002,30 +2002,60 @@ async function manageBangladeshCodLedger(request, env) {
       if (entryType === "CUSTOMER_COD_COLLECTED" && order.delivery_status !== "DELIVERED") {
         return json({ success: false, error: "Record customer COD collection only after delivery is marked DELIVERED" }, 409);
       }
-      if (entryType === "CUSTOMER_COD_COLLECTED") {
-        const prior = await env.DB.prepare(`SELECT COALESCE(SUM(amount_minor), 0) AS amount
-          FROM cod_reconciliation_entries WHERE order_id = ? AND entry_type = 'CUSTOMER_COD_COLLECTED'`).bind(orderId).first();
-        if (!Number.isSafeInteger(Number(order.total_minor)) || amount + Number(prior?.amount || 0) > Number(order.total_minor)) {
-          return json({ success: false, error: "Customer COD collection entries cannot exceed the server-calculated order total" }, 409);
-        }
-      }
-      if (entryType === "COURIER_SETTLEMENT_RECEIVED") {
-        const totals = await env.DB.prepare(`SELECT
-          COALESCE(SUM(CASE WHEN entry_type = 'CUSTOMER_COD_COLLECTED' THEN amount_minor ELSE 0 END), 0) AS collected,
-          COALESCE(SUM(CASE WHEN entry_type = 'COURIER_SETTLEMENT_RECEIVED' THEN amount_minor ELSE 0 END), 0) AS settled
-          FROM cod_reconciliation_entries WHERE order_id = ?`).bind(orderId).first();
-        if (amount + Number(totals?.settled || 0) > Number(totals?.collected || 0)) {
-          return json({ success: false, error: "Courier settlement cannot exceed recorded customer COD collection" }, 409);
-        }
+      if (entryType === "CUSTOMER_COD_COLLECTED" && !Number.isSafeInteger(Number(order.total_minor))) {
+        return json({ success: false, error: "Order total is unavailable for COD reconciliation" }, 409);
       }
       const id = crypto.randomUUID();
-      await env.DB.prepare(`INSERT INTO cod_reconciliation_entries
-        (id, order_id, entry_type, amount_minor, currency_code, status, source_reference,
-         evidence_reference, notes, occurred_at, recorded_by)
-        VALUES (?, ?, ?, ?, 'BDT', 'PENDING_REVIEW', ?, ?, ?, ?, ?)`).bind(
-          id, orderId, entryType, amount, source, evidence, notes, occurredAt,
-          text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER"
-        ).run();
+      const insertColumns = `(id, order_id, entry_type, amount_minor, currency_code, status, source_reference,
+        evidence_reference, notes, occurred_at, recorded_by)`;
+      const insertSelect = `INSERT INTO cod_reconciliation_entries ${insertColumns}
+        SELECT ?, ?, ?, ?, 'BDT', 'PENDING_REVIEW', ?, ?, ?, ?, ?`;
+      let insertSql = insertSelect;
+      let insertValues = [id, orderId, entryType, amount, source, evidence, notes, occurredAt,
+        text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER"];
+      if (entryType === "CUSTOMER_COD_COLLECTED") {
+        // The total cap is enforced inside the INSERT statement itself, so two
+        // simultaneous operator requests cannot both pass a stale pre-check.
+        insertSql += ` WHERE EXISTS (
+          SELECT 1 FROM orders o WHERE o.id = ? AND o.delivery_status = 'DELIVERED'
+            AND o.total_minor >= ? + COALESCE((
+              SELECT SUM(amount_minor) FROM cod_reconciliation_entries
+              WHERE order_id = o.id AND entry_type = 'CUSTOMER_COD_COLLECTED'
+            ), 0)
+        )`;
+        insertValues.push(orderId, amount);
+      } else if (entryType === "COURIER_SETTLEMENT_RECEIVED") {
+        // Settlement cannot exceed all recorded customer collections, and the
+        // check is part of the insert to avoid concurrent over-settlement.
+        insertSql += ` WHERE ? + COALESCE((
+          SELECT SUM(amount_minor) FROM cod_reconciliation_entries
+          WHERE order_id = ? AND entry_type = 'COURIER_SETTLEMENT_RECEIVED'
+        ), 0) <= COALESCE((
+          SELECT SUM(amount_minor) FROM cod_reconciliation_entries
+          WHERE order_id = ? AND entry_type = 'CUSTOMER_COD_COLLECTED'
+        ), 0)`;
+        insertValues.push(amount, orderId, orderId);
+      } else {
+        insertSql = `INSERT INTO cod_reconciliation_entries ${insertColumns}
+          VALUES (?, ?, ?, ?, 'BDT', 'PENDING_REVIEW', ?, ?, ?, ?, ?)`;
+      }
+      let inserted;
+      try {
+        inserted = await env.DB.prepare(insertSql).bind(...insertValues).run();
+      } catch (error) {
+        if (/UNIQUE constraint failed/i.test(String(error?.message || error))) {
+          return json({ success: false, error: "This source reference is already recorded for this order and entry type" }, 409);
+        }
+        throw error;
+      }
+      if (!inserted.meta || inserted.meta.changes !== 1) {
+        const message = entryType === "CUSTOMER_COD_COLLECTED"
+          ? "Customer COD collection entries cannot exceed the server-calculated order total"
+          : entryType === "COURIER_SETTLEMENT_RECEIVED"
+            ? "Courier settlement cannot exceed recorded customer COD collection"
+            : "Ledger entry could not be saved";
+        return json({ success: false, error: message }, 409);
+      }
       return json({ success: true, entry: { id, order_id: orderId, entry_type: entryType, amount_minor: amount, currency_code: "BDT", status: "PENDING_REVIEW" } }, 201);
     }
 
