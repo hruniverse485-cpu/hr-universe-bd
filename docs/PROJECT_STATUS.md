@@ -158,8 +158,11 @@ At every work session, record the current branch/head commit, changed files, tes
 
 ## Private supplier control center UI (2026-11-19)
 
-- Added `public/admin-sourcing.html`, a responsive owner-only sourcing dashboard served as a static asset. It provides offer listing/selection, offer creation/update, destination shipping quote entry, verification evidence/score entry, and approval-state transitions.
+- Added `public/admin-sourcing.html`, a responsive owner-only sourcing dashboard served as a static asset. It provides offer listing/selection, offer creation/update, destination shipping quote entry, verification evidence/score entry, approval-state transitions, and per-offer audit history.
 - Added authenticated GET listing to `/api/admin/sourcing/offers`; the same `HR_ADMIN_API_TOKEN` is required for both listing and write operations.
 - The browser keeps the token only in page memory, clears the password field after connection, does not use localStorage/sessionStorage, and offers explicit disconnect/clear. The page is marked noindex.
 - The dashboard does not contact suppliers, place orders, or execute payments. It is not production-accessible until the Worker is deployed with `HR_ADMIN_API_TOKEN` configured and migration 0008 is applied to the target D1 database. No production deployment or migration was performed.
 - CI run #74 passed Worker syntax, all 29 Node tests, and ordered migration validation.
+
+
+- Added authenticated audit-history retrieval scoped to a selected offer; the dashboard displays action, actor, timestamp and entity reference.
