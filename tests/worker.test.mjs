@@ -392,3 +392,79 @@ test("supplier FX conversion uses exact integer arithmetic for large minor-unit 
   assert.match(workerSource, /convertMinorByRatio\(/);
   assert.doesNotMatch(workerSource, /Math\.round\(\s*Number\(row\.source_unit_cost_minor\)/);
 });
+
+
+test("order idempotency rejects reuse of a key with a different request fingerprint", async () => {
+  const db = {
+    prepare(sql) {
+      assert.match(sql, /idempotency_request_hash/);
+      return {
+        bind(key) {
+          assert.equal(key, "order-key-123");
+          return {
+            first: async () => ({
+              id: "existing-order",
+              status: "PENDING",
+              created_at: "2026-11-19T00:00:00.000Z",
+              idempotency_request_hash: "0".repeat(64)
+            })
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/orders", "POST", JSON.stringify({ customer_name: "Different customer" }), {
+      "content-type": "application/json",
+      "Idempotency-Key": "order-key-123"
+    }),
+    { DB: db }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 409);
+  assert.match(payload.error, /different order request/i);
+});
+
+test("order idempotency returns the original order for an identical request fingerprint", async () => {
+  const { createHash } = await import("node:crypto");
+  const body = { customer_name: "Same customer" };
+  const canonical = JSON.stringify({ customer_name: "Same customer" });
+  const fingerprint = createHash("sha256").update(canonical).digest("hex");
+  const db = {
+    prepare(sql) {
+      assert.match(sql, /idempotency_request_hash/);
+      return {
+        bind() {
+          return {
+            first: async () => ({
+              id: "existing-order",
+              status: "PENDING",
+              created_at: "2026-11-19T00:00:00.000Z",
+              idempotency_request_hash: fingerprint
+            })
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/orders", "POST", JSON.stringify(body), {
+      "content-type": "application/json",
+      "Idempotency-Key": "order-key-123"
+    }),
+    { DB: db }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.duplicate, true);
+  assert.equal(payload.order.id, "existing-order");
+  assert.equal("idempotency_request_hash" in payload.order, false);
+});
+
+test("order request fingerprint is stored with newly created orders", () => {
+  assert.match(workerSource, /async function orderRequestFingerprint/);
+  assert.match(workerSource, /idempotency_request_hash/);
+  assert.match(workerSource, /idempotency_request_hash,?\s*$/m);
+  assert.match(workerSource, /requestFingerprint/);
+  assert.match(workerSource, /This Idempotency-Key was already used for a different order request/);
+});
