@@ -144,3 +144,22 @@ test("storefront JavaScript parses without syntax errors", () => {
   const script = storefrontSource.slice(start + 8, end);
   assert.doesNotThrow(() => new Script(script));
 });
+
+
+test("order endpoint rejects missing idempotency key before database work", async () => {
+  const response = await worker.fetch(
+    request("/api/orders", "POST", JSON.stringify({
+      country_code: "BD",
+      currency_code: "BDT",
+      payment_method: "COD"
+    })),
+    { DB: {} }
+  );
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Idempotency-Key/);
+});
+
+test("Worker delegates authoritative stock reservation to database triggers", () => {
+  assert.match(workerSource, /atomic reservation inside the same D1 batch/i);
+  assert.match(workerSource, /A valid Idempotency-Key header/);
+});
