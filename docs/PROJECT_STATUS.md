@@ -267,3 +267,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - The category endpoint validates the full market-code input rather than truncating overlong values into apparently valid country/currency codes.
 - GitHub Actions run [#313](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44575732518) passed on validation PR head `7c1c01010f6f3a0d76815587dac7c4ce94b5f1af`, based on Feature commit `fff6b6e387c0a43f0661a0b3b0bda8772e21d24f`: Worker syntax, all 113 Node tests, and all 15 ordered migrations passed. The temporary validation PR was closed unmerged.
 - No production deployment or D1 migration was performed.
+
+
+## Public product listing timestamp parity (2026-11-19)
+
+- Hardened both public product-listing inventory subqueries to reject future-dated verification timestamps, matching the category endpoint and the migration 0015 atomic reservation trigger.
+- Added a regression assertion requiring both product-listing stock checks to enforce `verified_at <= CURRENT_TIMESTAMP`.
+- Corrected the catalog guardrails documentation: the configurable freshness ceiling is 72 hours (not 720), and future-dated evidence is excluded.
+- Feature-branch change only; CI validation is pending. No production deployment or database migration was performed.
