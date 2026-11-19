@@ -13,7 +13,7 @@ try {
     `data:text/javascript;base64,${Buffer.from(workerSource).toString("base64")}`
   ));
 } catch (error) {
-  console.error("Worker module import failed:", error?.name, error?.message, error?.stack?.split("\n").slice(-5).join("\\n"));
+  console.error("Worker module import failed:", error?.name, error?.message, error?.stack?.split("\n").slice(-5).join("\n"));
   throw error;
 }
 
@@ -1379,7 +1379,8 @@ test("Inventory verification dashboard parses and does not persist owner token",
   assert.doesNotThrow(() => new Script(html.slice(start + 8, end)));
   assert.match(html, /noindex,nofollow/);
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
-  assert.match(html, /reserved_quantity/);\n  assert.match(html, /row\.is_stale/);
+  assert.match(html, /reserved_quantity/);
+  assert.match(html, /row\.is_stale/);
 });
 test("Bangladesh COD ledger is owner-only and records financial evidence pending review", async () => {
   const calls = [];
