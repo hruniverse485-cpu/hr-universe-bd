@@ -59,6 +59,31 @@ function convertMinorByRatio(minorValue, numeratorValue, denominatorValue) {
   return Number(rounded);
 }
 
+function publicCatalogImageUrl(value, requestUrl) {
+  const raw = text(value, 2048);
+  if (!raw) return null;
+
+  try {
+    const requestOrigin = new URL(requestUrl).origin;
+    const parsed = new URL(raw, requestOrigin + "/");
+    if (
+      !["http:", "https:"].includes(parsed.protocol) ||
+      parsed.origin !== requestOrigin ||
+      parsed.username ||
+      parsed.password ||
+      parsed.pathname.startsWith("/api/")
+    ) {
+      return null;
+    }
+
+    // Public catalog responses must not disclose third-party supplier/CDN
+    // hostnames or signed query strings. Keep only a same-origin path.
+    return parsed.pathname;
+  } catch {
+    return null;
+  }
+}
+
 function canonicalizeForHash(value) {
   if (Array.isArray(value)) {
     return value.map(canonicalizeForHash);
@@ -615,7 +640,10 @@ async function listProducts(request, env) {
       currency,
       inventory_max_age_hours: inventoryMaxAgeHours,
       count: result.results.length,
-      products: result.results
+      products: (result.results || []).map((product) => ({
+        ...product,
+        image_url: publicCatalogImageUrl(product.image_url, request.url)
+      }))
     });
 
   } catch (error) {
