@@ -15,6 +15,7 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 - The Worker writes the legacy order row and corresponding `order_items` in one D1 batch.
 - `public/index.html` has been replaced with an original premium, low-pressure discovery storefront. It fetches products from `/api/products` for BD/BDT, supports search, category navigation, sorting, saved products, product detail modal, responsive layouts, and reduced-motion preferences. It shows no hard-coded sample products and no fake-order fallback. It is currently a browsing/catalog experience; customer checkout is intentionally not exposed in this iteration.
 - `/api/products` now excludes products unless they have at least one ACTIVE variant with positive inventory in an ACTIVE warehouse for the requested country and a non-null stock verification timestamp. It returns the summed remaining quantity and `LOCAL_WAREHOUSE` fulfillment type. A freshness-age policy is not yet implemented, so this is not a guarantee that stock was rechecked recently.
+- Migration `0013_inventory_verification_events.sql` adds append-only physical stock verification history. The owner-only `/api/admin/inventory/verification` API and `public/admin-inventory-verification.html` allow a physical count to be recorded; the Worker subtracts active reservations, atomically updates available stock and writes its evidence event. Counts below already-reserved units are rejected. The dashboard token stays in page memory only.
 - Migration `0012_bangladesh_cod_reconciliation_returns.sql` adds an owner-only COD evidence ledger and returned-parcel inspection records. The API caps customer collection at the server order total, caps courier settlement and customer refunds at verified customer COD collections, prevents duplicate evidence references, and records new entries pending owner review. Returned inspection quantities are capped atomically; inspection never changes inventory.
 - `public/admin-cod-operations.html` provides the owner-only COD ledger and return inspection interface. It keeps the bearer token in page memory only and does not persist it in browser storage.
 - `public/HR_UNIVERSE_V2_preview_index.html` is a preview, not a production-ready global storefront. It explicitly labels its catalog as preview-only.
@@ -56,7 +57,7 @@ Stable branch: `main` (do not modify or merge without explicit owner approval)
 
 ## Next implementation sequence
 
-1. Add an inventory verification freshness policy and owner workflow so stale stock cannot remain publicly listed indefinitely.
+1. Add a configurable inventory verification freshness policy and stale-count warnings so old counts cannot remain publicly listed indefinitely.
 2. Extend backend integration coverage for full COD order creation, pricing, shipping, idempotent retries, and concurrent reservation scenarios.
 2. Extend the API-backed premium storefront with real category metadata, verified product imagery/details, and accessibility/browser checks; keep checkout disabled until payment and market prerequisites are met.
 3. Implement authentication and role-based authorization before exposing any admin or customer-private endpoints.
