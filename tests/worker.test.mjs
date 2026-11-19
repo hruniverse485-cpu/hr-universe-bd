@@ -765,3 +765,75 @@ test("partner network migration keeps courier partners in research until verifie
   assert.match(migration, /verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED'/);
   assert.match(migration, /partner_ai_recommendations/);
 });
+
+
+test("partner interaction log rejects unauthorized requests before database access", async () => {
+  const response = await worker.fetch(request("/api/admin/partners/interactions"), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 401);
+});
+
+test("partner interaction log saves internal notes only and never sends messages", async () => {
+  const calls = [];
+  const DB = {
+    prepare(sql) {
+      calls.push({ sql, values: [] });
+      return {
+        bind(...values) {
+          calls[calls.length - 1].values = values;
+          return {
+            first: async () => ({ id: "courier-1" }),
+            run: async () => ({ success: true })
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/admin/partners/interactions", "POST", JSON.stringify({
+      partner_type: "COURIER",
+      partner_id: "courier-1",
+      interaction_type: "EMAIL",
+      summary: "Prepare an outreach draft for owner review.",
+      follow_up_at: "2026-12-01"
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.interaction.direction, "INTERNAL");
+  assert.equal(payload.interaction.approval_status, "INTERNAL_NOTE");
+  assert.match(payload.message, /No message was sent/);
+  assert.match(calls[1].sql, /'INTERNAL'.*'INTERNAL_NOTE'/s);
+  assert.doesNotMatch(calls[1].sql, /APPROVED_TO_SEND|SENT/);
+});
+
+test("partner interaction log validates partner identity and follow-up date", async () => {
+  const DB = {
+    prepare() {
+      return { bind() { return { first: async () => null }; } };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/admin/partners/interactions", "POST", JSON.stringify({
+      partner_type: "COURIER",
+      partner_id: "missing",
+      interaction_type: "FOLLOW_UP",
+      summary: "Call after reviewing rates.",
+      follow_up_at: "next week"
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /ISO date/);
+});
+
+test("partner interaction log rejects unsupported methods", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/partners/interactions", "DELETE", undefined, { authorization: "Bearer owner-secret" }),
+    { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 405);
+});
