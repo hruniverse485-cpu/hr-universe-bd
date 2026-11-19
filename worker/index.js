@@ -2009,7 +2009,7 @@ async function manageCatalogAdmin(request, env) {
   try{const raw=await request.text();if(raw.length>12000)return json({success:false,error:"Request too large"},413);data=JSON.parse(raw);}
   catch{return json({success:false,error:"Invalid JSON request"},400);}
   if(!data||typeof data!=="object"||Array.isArray(data))return json({success:false,error:"Invalid catalog operation"},400);
-  const audit=async(mutation,type,id,action,before,table,fields)=>{
+  const recordCatalogAudit=async(mutation,type,id,action,before,table,fields)=>{
     const after="json_object("+fields.map(k=>"'"+k+"', "+k).join(",")+")";
     const log=env.DB.prepare("INSERT INTO catalog_admin_audit (id,entity_type,entity_id,action,actor,before_json,after_json) VALUES (?,?,(SELECT id FROM "+table+" WHERE id=? AND changes()=1),?,?,?,(SELECT "+after+" FROM "+table+" WHERE id=?))")
       .bind(crypto.randomUUID(),type,id,action,text(env.HR_ADMIN_OWNER_LABEL,80)||"OWNER",before?JSON.stringify(before):null,id);
@@ -2026,7 +2026,7 @@ async function manageCatalogAdmin(request, env) {
       const mutation=before
         ?env.DB.prepare("UPDATE products SET category_id=?,name=?,slug=?,description=?,brand=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status<>'ACTIVE'").bind(category,name,slug,text(data.description,5000)||null,text(data.brand,120)||null,id)
         :env.DB.prepare("INSERT INTO products (id,category_id,name,slug,description,brand,status) VALUES (?,?,?,?,?,?,'DRAFT')").bind(id,category,name,slug,text(data.description,5000)||null,text(data.brand,120)||null);
-      await audit(mutation,"PRODUCT",id,before?"PRODUCT_UPDATED":"PRODUCT_CREATED",before,"products",["id","category_id","name","slug","description","brand","status","updated_at"]);
+      await recordCatalogAudit(mutation,"PRODUCT",id,before?"PRODUCT_UPDATED":"PRODUCT_CREATED",before,"products",["id","category_id","name","slug","description","brand","status","updated_at"]);
       return json({success:true,product:await env.DB.prepare("SELECT * FROM products WHERE id=?").bind(id).first()},before?200:201);
     }
     if(data.operation==="save_variant"){
@@ -2045,7 +2045,7 @@ async function manageCatalogAdmin(request, env) {
       const mutation=before
         ?env.DB.prepare("UPDATE product_variants SET sku=?,variant_name=?,attributes_json=? WHERE id=? AND product_id=? AND status<>'ACTIVE'").bind(sku,name||null,attrs,id,pid)
         :env.DB.prepare("INSERT INTO product_variants (id,product_id,sku,variant_name,attributes_json,status) VALUES (?,?,?,?,?,'DRAFT')").bind(id,pid,sku,name||null,attrs);
-      await audit(mutation,"VARIANT",id,before?"VARIANT_UPDATED":"VARIANT_CREATED",before,"product_variants",["id","product_id","sku","variant_name","attributes_json","status"]);
+      await recordCatalogAudit(mutation,"VARIANT",id,before?"VARIANT_UPDATED":"VARIANT_CREATED",before,"product_variants",["id","product_id","sku","variant_name","attributes_json","status"]);
       return json({success:true,variant:await env.DB.prepare("SELECT * FROM product_variants WHERE id=?").bind(id).first()},before?200:201);
     }
     if(data.operation==="save_price"){
@@ -2060,7 +2060,7 @@ async function manageCatalogAdmin(request, env) {
       const from=text(data.valid_from,40)||null,until=text(data.valid_until,40)||null;
       if((from&&Number.isNaN(Date.parse(from)))||(until&&Number.isNaN(Date.parse(until)))||(from&&until&&Date.parse(until)<=Date.parse(from)))return json({success:false,error:"Invalid price validity window"},400);
       const mutation=env.DB.prepare("INSERT INTO product_prices (id,product_id,variant_id,country_code,currency_code,price_minor,compare_at_price_minor,status,valid_from,valid_until) VALUES (?,?,?,?,?,?,?,'PENDING',?,?)").bind(id,pid,vid,country,currency,price,compare,from,until);
-      await audit(mutation,"PRICE",id,"PRICE_CREATED_PENDING",null,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
+      await recordCatalogAudit(mutation,"PRICE",id,"PRICE_CREATED_PENDING",null,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
       return json({success:true,price:await env.DB.prepare("SELECT * FROM product_prices WHERE id=?").bind(id).first()},201);
     }
 
@@ -2072,7 +2072,7 @@ async function manageCatalogAdmin(request, env) {
       const product=await env.DB.prepare("SELECT status FROM products WHERE id=?").bind(before.product_id).first();
       if(status==="ACTIVE"&&(!product||product.status==="ARCHIVED"))return json({success:false,error:"Archived products cannot have active variants"},409);
       const mutation=env.DB.prepare("UPDATE product_variants SET status=? WHERE id=? AND status=?").bind(status,id,before.status);
-      await audit(mutation,"VARIANT",id,"VARIANT_STATUS_CHANGED",before,"product_variants",["id","product_id","sku","variant_name","attributes_json","status"]);
+      await recordCatalogAudit(mutation,"VARIANT",id,"VARIANT_STATUS_CHANGED",before,"product_variants",["id","product_id","sku","variant_name","attributes_json","status"]);
       return json({success:true,id,status});
     }
     if(data.operation==="set_price_status"){
@@ -2086,7 +2086,7 @@ async function manageCatalogAdmin(request, env) {
         if(!eligible)return json({success:false,error:"Product category, market, variant or price validity is not eligible"},409);
       }
       const mutation=env.DB.prepare("UPDATE product_prices SET status=? WHERE id=? AND status=?").bind(status,id,before.status);
-      await audit(mutation,"PRICE",id,"PRICE_STATUS_CHANGED",before,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
+      await recordCatalogAudit(mutation,"PRICE",id,"PRICE_STATUS_CHANGED",before,"product_prices",["id","product_id","variant_id","country_code","currency_code","price_minor","compare_at_price_minor","status","valid_from","valid_until"]);
       return json({success:true,id,status});
     }
     if(data.operation==="set_product_status"){
@@ -2102,7 +2102,7 @@ async function manageCatalogAdmin(request, env) {
         if(!ready)return json({success:false,error:"Activation requires active category and market, fresh verified warehouse stock, an active variant and valid active market price"},409);
       }
       const mutation=env.DB.prepare("UPDATE products SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?").bind(status,id,before.status);
-      await audit(mutation,"PRODUCT",id,"PRODUCT_STATUS_CHANGED",before,"products",["id","category_id","name","slug","description","brand","status","updated_at"]);
+      await recordCatalogAudit(mutation,"PRODUCT",id,"PRODUCT_STATUS_CHANGED",before,"products",["id","category_id","name","slug","description","brand","status","updated_at"]);
       return json({success:true,id,status});
     }
     return json({success:false,error:"Unknown catalog operation"},400);
