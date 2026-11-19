@@ -69,7 +69,23 @@ try:
     db.execute("INSERT INTO inventory (id, warehouse_id, product_id, variant_id, quantity, verified_at) VALUES ('inv', 'wh', 'prod', 'var', 5, CURRENT_TIMESTAMP)")
     # Seed one verified multi-supplier offer and destination quote for schema checks.
     db.execute("INSERT INTO countries (id, country_code, country_name, currency_code, is_active) VALUES ('c-us', 'US', 'United States', 'USD', 1)")
-    db.execute("INSERT INTO currencies (code, currency_name, symbol, decimal_places, is_active) VALUES ('USD', 'US Dollar', '
+    db.execute("INSERT INTO currencies (code, currency_name, symbol, decimal_places, is_active) VALUES ('USD', 'US Dollar', 'USD', 2, 1)")
+    db.execute("INSERT INTO suppliers (id, supplier_name, origin_country_code, status) VALUES ('supplier-a', 'Test supplier', 'US', 'ACTIVE')")
+    db.execute("INSERT INTO supplier_product_sources (id, supplier_id, product_id, supplier_product_id, source_currency_code, source_unit_cost_minor, source_status) VALUES ('source-a', 'supplier-a', 'prod', 'external-product-a', 'USD', 1250, 'AVAILABLE')")
+    db.execute("INSERT INTO supplier_variant_offers (id, source_id, product_id, variant_id, supplier_variant_id, source_unit_cost_minor, source_currency_code, availability_status, approval_status, quality_score, service_score, packaging_score, delivery_score, packaging_status, supplier_branding_excluded, tracking_available, returns_supported, evidence_reference, verified_at) VALUES ('offer-a', 'source-a', 'prod', 'var', 'external-variant-a', 1250, 'USD', 'AVAILABLE', 'ACTIVE', 90, 85, 95, 80, 'NEUTRAL_CONFIRMED', 1, 1, 1, 'test-evidence', CURRENT_TIMESTAMP)")
+    db.execute("INSERT INTO supplier_variant_shipping_quotes (id, offer_id, destination_country_code, shipping_method_code, shipping_cost_minor, currency_code, estimated_min_days, estimated_max_days, availability_status, quoted_at, expires_at) VALUES ('quote-a', 'offer-a', 'US', 'STANDARD', 500, 'USD', 5, 9, 'AVAILABLE', CURRENT_TIMESTAMP, '2099-01-01 00:00:00')")
+    eligible = db.execute("SELECT svo.id FROM supplier_variant_offers svo JOIN supplier_product_sources src ON src.id = svo.source_id JOIN suppliers s ON s.id = src.supplier_id JOIN supplier_variant_shipping_quotes q ON q.offer_id = svo.id JOIN countries c ON c.country_code = q.destination_country_code WHERE svo.approval_status = 'ACTIVE' AND svo.availability_status = 'AVAILABLE' AND src.source_status = 'AVAILABLE' AND s.status = 'ACTIVE' AND q.availability_status = 'AVAILABLE' AND q.currency_code = c.currency_code AND svo.packaging_status = 'NEUTRAL_CONFIRMED' AND svo.supplier_branding_excluded = 1 AND q.destination_country_code = 'US'").fetchall()
+    if eligible != [('offer-a',)]:
+        fail(f"Expected one eligible verified US supplier offer, got {eligible}")
+    db.execute("INSERT INTO products (id, category_id, name, slug, status) VALUES ('other-prod', 'cat', 'Other', 'other-product', 'ACTIVE')")
+    db.execute("INSERT INTO product_variants (id, product_id, sku, status) VALUES ('other-var', 'other-prod', 'OTHER-1', 'ACTIVE')")
+    try:
+        db.execute("INSERT INTO supplier_variant_offers (id, source_id, product_id, variant_id, supplier_variant_id, source_unit_cost_minor, source_currency_code) VALUES ('bad-offer', 'source-a', 'prod', 'other-var', 'external-bad', 100, 'USD')")
+    except sqlite3.IntegrityError:
+        pass
+    else:
+        fail("Supplier variant offer accepted an HR variant from another product")
+
 
     def insert_order(order_id: str) -> None:
         db.execute(
