@@ -932,6 +932,49 @@ test("partner operations dashboard inline JavaScript parses", () => {
 });
 
 
+test("courier service areas require owner authentication", async () => {
+  const response = await worker.fetch(request("/api/admin/partners/service-areas"), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(response.status, 401);
+});
+
+test("courier service area creation forces inactive and unverified state", async () => {
+  const calls = [];
+  const DB = { prepare(sql) { calls.push({ sql, values: [] }); return { bind(...values) {
+    calls[calls.length - 1].values = values;
+    return { first: async () => ({ id: "courier-1" }), run: async () => ({ success: true }) };
+  } }; } };
+  const response = await worker.fetch(
+    request("/api/admin/partners/service-areas", "POST", JSON.stringify({
+      courier_id: "courier-1", district: "Dhaka", area_name: "Dhanmondi",
+      active: true, verified_at: "2026-11-19T00:00:00Z"
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.service_area.active, false);
+  assert.equal(payload.service_area.verified_at, null);
+  assert.match(calls[1].sql, /VALUES \(\?, \?, \?, \?, \?, \?, \?, 0, \?, NULL, \?\)/);
+});
+
+test("courier service areas reject invalid service type and unsupported methods", async () => {
+  const DB = { prepare() { return { bind() { return { first: async () => ({ id: "courier-1" }) }; } }; } };
+  const response = await worker.fetch(
+    request("/api/admin/partners/service-areas", "POST", JSON.stringify({
+      courier_id: "courier-1", district: "Dhaka", service_type: "MAGIC"
+    }), { authorization: "Bearer owner-secret", "content-type": "application/json" }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 400);
+  const denied = await worker.fetch(request("/api/admin/partners/service-areas", "DELETE", undefined, {
+    authorization: "Bearer owner-secret"
+  }), { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" });
+  assert.equal(denied.status, 405);
+});
+
 test("courier rate cards require owner authentication", async () => {
   const response = await worker.fetch(request("/api/admin/partners/courier-rates"), {
     DB: { prepare() { throw new Error("Database must not be queried"); } },
