@@ -2023,6 +2023,7 @@ async function manageCatalogAdmin(request, env) {
       if(parent===id)return json({success:false,error:"A category cannot be its own parent"},400);
       if(parent&&!await env.DB.prepare("SELECT id FROM categories WHERE id=?").bind(parent).first())return json({success:false,error:"Parent category not found"},409);
       const before=await env.DB.prepare("SELECT * FROM categories WHERE id=?").bind(id).first();
+      if(parent){const cycle=await env.DB.prepare("WITH RECURSIVE descendants(id) AS (SELECT id FROM categories WHERE parent_id=? UNION SELECT c.id FROM categories c JOIN descendants d ON c.parent_id=d.id) SELECT 1 AS cycle FROM descendants WHERE id=? LIMIT 1").bind(id,parent).first();if(cycle)return json({success:false,error:"Category parent change would create a hierarchy cycle"},409);}
       if(before&&before.is_active)return json({success:false,error:"Deactivate category before editing its details"},409);
       const mutation=before
         ?env.DB.prepare("UPDATE categories SET name=?,slug=?,parent_id=?,sort_order=? WHERE id=? AND is_active=0").bind(name,slug,parent,sort,id)
