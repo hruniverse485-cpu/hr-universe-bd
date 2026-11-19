@@ -62,6 +62,33 @@ test("product endpoint rejects unsupported methods", async () => {
   assert.equal(response.status, 405);
 });
 
+test("public category endpoint rejects unsupported methods", async () => {
+  const response = await worker.fetch(request("/api/categories?country=BD&currency=BDT", "POST"), { DB: {} });
+  assert.equal(response.status, 405);
+});
+
+test("public category endpoint requires a valid market", async () => {
+  const response = await worker.fetch(request("/api/categories?country=USA&currency=USD"), { DB: {} });
+  assert.equal(response.status, 400);
+});
+
+test("public category endpoint only returns categories with currently eligible products", async () => {
+  let sql = "";
+  let values = [];
+  const DB = { prepare(query) { sql = query; return { bind(...args) { values = args; return { all: async () => ({ results: [{ id: "cat-1", name: "Home", slug: "home", product_count: 2 }] }) }; } }; } };
+  const response = await worker.fetch(request("/api/categories?country=BD&currency=BDT"), { DB, HR_INVENTORY_MAX_AGE_HOURS: "24" });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.count, 1);
+  assert.equal(payload.categories[0].slug, "home");
+  assert.match(sql, /c\.is_active = 1/);
+  assert.match(sql, /p\.status = 'ACTIVE'/);
+  assert.match(sql, /pp\.status = 'ACTIVE'/);
+  assert.match(sql, /i\.verified_at IS NOT NULL/);
+  assert.match(sql, /datetime\(i\.verified_at\) <= CURRENT_TIMESTAMP/);
+  assert.deepEqual(values, ["BD", "BDT", "-24 hours"]);
+});
+
 test("product endpoint requires a valid country and currency", async () => {
   const response = await worker.fetch(
     request("/api/products?country=USA&currency=USD"),
@@ -263,9 +290,12 @@ test("storefront never claims a failed request created a demo order", () => {
   assert.doesNotMatch(storefrontSource, /fetch\('\/api\/orders/);
 });
 
-test("storefront provides search, saved products, responsive layout and relaxed browsing copy", () => {
+test("storefront provides search, saved products, live category discovery, responsive layout and relaxed browsing copy", () => {
   assert.match(storefrontSource, /id="searchInput"/);
   assert.match(storefrontSource, /hu-saved-products/);
+  assert.match(storefrontSource, /api\/categories\?/);
+  assert.match(storefrontSource, /id="dynamicCategoryNav"/);
+  assert.match(storefrontSource, /category_slug/);
   assert.match(storefrontSource, /@media\(max-width:600px\)/);
   assert.match(storefrontSource, /No rush/);
   assert.match(storefrontSource, /prefers-reduced-motion/);
