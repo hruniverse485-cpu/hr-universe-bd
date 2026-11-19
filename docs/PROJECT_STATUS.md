@@ -149,8 +149,8 @@ At every work session, record the current branch/head commit, changed files, tes
 ## Supplier offer administration foundation (2026-11-19)
 
 - Added migration 0008 with an append-only-style audit record table for owner-managed supplier offer changes (before/after snapshots and action).
-- Added owner-token-protected `POST /api/admin/sourcing/offers` operations to create/update non-active supplier variant offers and move offers through controlled review states.
+- Added owner-token-protected `POST /api/admin/sourcing/offers` operations to create/update non-active supplier variant offers, record destination shipping quotes and FX evidence, record verification scores/packaging evidence, and move offers through controlled review states.
 - Offer identity (supplier source, HR product/variant, external supplier variant) cannot be rewritten in place. ACTIVE offers must be paused before editing.
 - Promotion to ACTIVE is blocked unless the supplier and source are active/available, stock is available, verification evidence and all four scores exist, packaging is confirmed neutral or HR-branded, supplier branding is excluded, and a current destination-valid shipping quote/FX evidence exists.
 - The endpoint requires `HR_ADMIN_API_TOKEN` as a Worker secret. No secret is stored in Git or D1.
-- This is an API foundation, not a complete admin UI or supplier integration. Shipping quote write workflow, richer role-based access, audit retention policy, and end-to-end operational review remain to be implemented. No supplier was activated, no supplier API was called, no production migration/deployment occurred, and `main` remains unchanged.
+- This is an API foundation, not a complete admin UI or supplier integration. Shipping quote write and offer-evidence verification operations are now available through the same private API. A browser-based admin screen, richer role-based access, audit retention policy, and end-to-end operational review remain to be implemented. No supplier was activated, no supplier API was called, no production migration/deployment occurred, and `main` remains unchanged.
