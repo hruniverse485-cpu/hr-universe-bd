@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>HR UNIVERSE — COD & Returns Operations</title>
+<style>
+:root{color-scheme:light;--ink:#172033;--muted:#65728a;--line:#dfe5ee;--navy:#10213d;--blue:#2456a6;--bg:#f4f6fa;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:var(--navy);color:white;padding:22px max(18px,calc((100% - 1120px)/2))}
+header h1{font-size:21px;margin:0 0 4px}header p{margin:0;color:#c8d3e5;font-size:13px}
+main{max-width:1120px;margin:24px auto;padding:0 16px 48px}
+.panel{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 3px 14px #17203308}
+h2{font-size:18px;margin:0 0 12px}.muted{color:var(--muted);font-size:13px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}.field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:160px}
+label{font-size:12px;font-weight:700;color:#46536a}
+input,select,textarea{width:100%;border:1px solid #ccd5e2;border-radius:8px;padding:10px 11px;font:inherit;background:white;color:var(--ink)}
+textarea{min-height:74px;resize:vertical}
+button{border:0;border-radius:8px;padding:10px 15px;background:var(--blue);color:white;font-weight:700;cursor:pointer}
+button.secondary{background:#e9eef7;color:#213553}button.warn{background:#9a4b28}button:disabled{opacity:.5;cursor:not-allowed}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}.tabs button.active{background:var(--navy)}
+.notice{padding:10px 12px;border-radius:8px;background:#eef3fb;color:#344660;font-size:13px;margin:12px 0}
+.status{font-size:12px;font-weight:700;padding:3px 8px;border-radius:99px;background:#eef1f5;display:inline-block}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:#59677e;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.tablewrap{overflow:auto}td .actions{display:flex;gap:6px;flex-wrap:wrap}td button{padding:6px 9px;font-size:11px}
+.hidden{display:none!important}.error{color:#a33324}.success{color:#1f7048}
+nav a{color:#d8e5fb;margin-right:14px;font-size:13px}
+@media(max-width:640px){main{margin-top:14px}.panel{padding:14px}.field{min-width:100%}header{padding:18px}}
+</style>
+</head>
+<body>
+<header>
+<h1>HR UNIVERSE — COD & Returns Operations</h1>
+<p>Private owner workspace · Bangladesh BDT COD only</p>
+<nav style="margin-top:10px"><a href="/admin-delivery.html">Delivery operations</a><a href="/admin-partners.html">Partner operations</a></nav>
+</header>
+<main>
+<section class="panel">
+<h2>Owner access</h2>
+<div class="row">
+<div class="field"><label for="token">Owner API token (kept in this page memory only)</label><input id="token" type="password" autocomplete="off" placeholder="Paste owner token"></div>
+<button id="connect">Connect & load records</button><button class="secondary" id="disconnect">Disconnect</button>
+</div>
+<p id="message" class="muted" role="status">Not connected. No credentials are stored in browser storage.</p>
+</section>
+<div id="workspace" class="hidden">
+<div class="tabs"><button class="active" data-tab="ledger">COD financial ledger</button><button class="secondary" data-tab="returns">Returned parcel inspections</button></div>
+<section id="ledger" class="panel">
+<h2>Record COD financial evidence</h2>
+<p class="notice">Customer COD collected and courier settlement received are separate entries. New entries remain PENDING REVIEW. Delivery status is not proof of cash settlement. Enter amounts in whole BDT (minor units; BDT has 0 decimal places).</p>
+<form id="ledgerForm">
+<div class="row">
+<div class="field"><label>Order ID</label><input name="order_id" required maxlength="100"></div>
+<div class="field"><label>Entry type</label><select name="entry_type" required>
+<option value="CUSTOMER_COD_COLLECTED">Customer COD collected</option><option value="COURIER_SETTLEMENT_RECEIVED">Courier settlement received</option><option value="COURIER_FEE">Courier fee</option><option value="RETURN_FEE">Return fee</option><option value="CUSTOMER_REFUND">Customer refund</option><option value="ADJUSTMENT_IN">Adjustment in</option><option value="ADJUSTMENT_OUT">Adjustment out</option>
+</select></div>
+<div class="field"><label>Amount (BDT)</label><input name="amount_minor" type="number" min="1" step="1" required></div>
+</div>
+<div class="row" style="margin-top:10px">
+<div class="field"><label>Evidence reference</label><input name="evidence_reference" required maxlength="500" placeholder="Receipt, statement, dated document reference"></div>
+<div class="field"><label>Courier/source reference (optional)</label><input name="source_reference" maxlength="160"></div>
+<div class="field"><label>Occurred at (optional ISO date/time)</label><input name="occurred_at" placeholder="Defaults to now"></div>
+</div>
+<div class="field" style="margin-top:10px"><label>Notes</label><textarea name="notes" maxlength="1000"></textarea></div>
+<p style="margin:12px 0 0"><button type="submit">Save pending ledger entry</button></p>
+</form>
+<div class="row" style="margin:18px 0 10px"><h2 style="margin:0;flex:1">Financial evidence entries</h2><button class="secondary" id="refreshLedger">Refresh</button></div>
+<div class="tablewrap"><table><thead><tr><th>Order / type</th><th>Amount</th><th>Evidence</th><th>Status</th><th>Review</th></tr></thead><tbody id="ledgerRows"><tr><td colspan="5" class="muted">Connect to load entries.</td></tr></tbody></table></div>
+</section>
+<section id="returns" class="panel hidden">
+<h2>Inspect a returned parcel</h2>
+<p class="notice">Inspection is evidence capture only. RESTOCK CANDIDATE does not change inventory or authorize resale. Damaged, incomplete, wrong or missing parcels cannot be marked as restock candidates.</p>
+<form id="returnForm">
+<div class="row">
+<div class="field"><label>Returned order ID</label><input name="order_id" required maxlength="100"></div>
+<div class="field"><label>Parcel condition</label><select name="parcel_condition" required><option value="SEALED_INTACT">Sealed / intact</option><option value="OPENED_INTACT">Opened / intact</option><option value="DAMAGED">Damaged</option><option value="INCOMPLETE">Incomplete</option><option value="WRONG_ITEM">Wrong item</option><option value="MISSING">Missing</option></select></div>
+<div class="field"><label>Disposition</label><select name="disposition" required><option value="QUARANTINE">Quarantine</option><option value="RESTOCK_CANDIDATE">Restock candidate (inspection only)</option><option value="RETURN_TO_SUPPLIER">Return to supplier</option><option value="DISPOSE">Dispose</option><option value="INVESTIGATE">Investigate</option></select></div>
+<div class="field"><label>Inspected quantity</label><input name="inspected_quantity" type="number" min="1" max="10000" step="1" required></div>
+</div>
+<div class="row" style="margin-top:10px">
+<div class="field"><label>Inspection notes</label><textarea name="notes" required maxlength="2000"></textarea></div>
+<div class="field"><label>Photo/evidence reference (optional)</label><input name="evidence_reference" maxlength="500"></div>
+</div>
+<p style="margin:12px 0 0"><button type="submit">Save inspection record</button></p>
+</form>
+<div class="row" style="margin:18px 0 10px"><h2 style="margin:0;flex:1">Inspection history</h2><button class="secondary" id="refreshReturns">Refresh</button></div>
+<div class="tablewrap"><table><thead><tr><th>Order</th><th>Condition</th><th>Disposition</th><th>Qty</th><th>Notes</th></tr></thead><tbody id="returnRows"><tr><td colspan="5" class="muted">Connect to load inspections.</td></tr></tbody></table></div>
+</section>
+</div>
+</main>
+<script>
+(() => {
+  let ownerToken = "";
+  const $ = (id) => document.getElementById(id);
+  const msg = (text, kind = "") => { $("message").textContent = text; $("message").className = kind; };
+  const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+  const money = (value) => "৳" + Number(value || 0).toLocaleString("en-BD");
+  async function api(path, options = {}) {
+    if (!ownerToken) throw new Error("Connect with the owner token first");
+    const response = await fetch(path, { ...options, headers: { "Authorization": "Bearer " + ownerToken, ...(options.body ? {"Content-Type":"application/json"} : {}), ...(options.headers || {}) } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success === false) throw new Error(data.error || "Request failed");
+    return data;
+  }
+  async function loadLedger() {
+    const data = await api("/api/admin/orders/cod-ledger");
+    $("ledgerRows").innerHTML = data.entries.length ? data.entries.map((entry) => '<tr><td><strong>'+esc(entry.order_id)+'</strong><br>'+esc(entry.entry_type)+'</td><td>'+money(entry.amount_minor)+' BDT</td><td>'+esc(entry.evidence_reference)+(entry.source_reference?'<br><span class="muted">'+esc(entry.source_reference)+'</span>':'')+'</td><td><span class="status">'+esc(entry.status)+'</span></td><td>'+(entry.status==="PENDING_REVIEW"?'<div class="actions"><button data-review="VERIFIED" data-id="'+esc(entry.id)+'">Verify</button><button class="warn" data-review="DISPUTED" data-id="'+esc(entry.id)+'">Dispute</button></div>':esc(entry.review_note||"Reviewed"))+'</td></tr>').join("") : '<tr><td colspan="5" class="muted">No ledger entries yet.</td></tr>';
+  }
+  async function loadReturns() {
+    const data = await api("/api/admin/orders/returns");
+    $("returnRows").innerHTML = data.inspections.length ? data.inspections.map((entry) => '<tr><td>'+esc(entry.order_id)+'</td><td>'+esc(entry.parcel_condition)+'</td><td>'+esc(entry.disposition)+'</td><td>'+esc(entry.inspected_quantity)+'</td><td>'+esc(entry.notes)+(entry.evidence_reference?'<br><span class="muted">'+esc(entry.evidence_reference)+'</span>':'')+'</td></tr>').join("") : '<tr><td colspan="5" class="muted">No inspection records yet.</td></tr>';
+  }
+  $("connect").addEventListener("click", async () => {
+    ownerToken = $("token").value.trim();
+    if (!ownerToken) { msg("Enter the owner API token.", "error"); return; }
+    try { await Promise.all([loadLedger(), loadReturns()]); $("workspace").classList.remove("hidden"); msg("Connected. Token remains in page memory only.", "success"); }
+    catch (error) { ownerToken = ""; msg(error.message, "error"); }
+  });
+  $("disconnect").addEventListener("click", () => { ownerToken = ""; $("token").value = ""; $("workspace").classList.add("hidden"); msg("Disconnected. Owner token cleared from page memory."); });
+  document.querySelectorAll("[data-tab]").forEach((button) => button.addEventListener("click", () => {
+    document.querySelectorAll("[data-tab]").forEach((item) => { item.classList.remove("active"); item.classList.add("secondary"); });
+    button.classList.add("active"); button.classList.remove("secondary");
+    $("ledger").classList.toggle("hidden", button.dataset.tab !== "ledger");
+    $("returns").classList.toggle("hidden", button.dataset.tab !== "returns");
+  }));
+  $("ledgerForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const body = Object.fromEntries(form.entries());
+    body.amount_minor = Number(body.amount_minor);
+    try { await api("/api/admin/orders/cod-ledger", {method:"POST",body:JSON.stringify(body)}); event.currentTarget.reset(); await loadLedger(); msg("Entry saved as PENDING REVIEW.", "success"); }
+    catch (error) { msg(error.message, "error"); }
+  });
+  $("returnForm").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    body.inspected_quantity = Number(body.inspected_quantity);
+    try { await api("/api/admin/orders/returns", {method:"POST",body:JSON.stringify(body)}); event.currentTarget.reset(); await loadReturns(); msg("Inspection saved. Inventory was not changed.", "success"); }
+    catch (error) { msg(error.message, "error"); }
+  });
+  $("ledgerRows").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-review]");
+    if (!button) return;
+    const reviewNote = window.prompt("Add review note (optional):") || "";
+    try { await api("/api/admin/orders/cod-ledger", {method:"PATCH",body:JSON.stringify({entry_id:button.dataset.id,status:button.dataset.review,review_note:reviewNote})}); await loadLedger(); msg("Ledger entry review recorded.", "success"); }
+    catch (error) { msg(error.message, "error"); }
+  });
+  $("refreshLedger").addEventListener("click", () => loadLedger().then(()=>msg("Ledger refreshed.","success")).catch((error)=>msg(error.message,"error")));
+  $("refreshReturns").addEventListener("click", () => loadReturns().then(()=>msg("Return inspections refreshed.","success")).catch((error)=>msg(error.message,"error")));
+})();
+</script>
+</body>
+</html>
