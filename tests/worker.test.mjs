@@ -1099,3 +1099,85 @@ test("partner recommendation review only records approval and never executes ope
   assert.match(sql, /WHERE id = \? AND status = 'PENDING_REVIEW'/);
   assert.match(payload.message, /does not execute/i);
 });
+
+
+test("Bangladesh COD delivery queue is owner-only and reads only BD BDT COD orders", async () => {
+  const denied = await worker.fetch(request("/api/admin/orders/delivery"), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } },
+    HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(denied.status, 401);
+  let sql = "";
+  const DB = { prepare(statement) { sql = statement; return { all: async () => ({ results: [{ id: "order-bd" }] }) }; } };
+  const response = await worker.fetch(request("/api/admin/orders/delivery"), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret",
+    // The route requires the bearer token even for read-only order data.
+  });
+  assert.equal(response.status, 401);
+  const authorized = await worker.fetch(request("/api/admin/orders/delivery", "GET", undefined, {
+    authorization: "Bearer owner-secret"
+  }), { DB, HR_ADMIN_API_TOKEN: "owner-secret" });
+  assert.equal(authorized.status, 200);
+  assert.match(sql, /country_code = 'BD'.*currency_code = 'BDT'.*payment_method = 'COD'/s);
+});
+
+test("Bangladesh COD delivery update enforces safe status transition and records an event", async () => {
+  const statements = [];
+  const before = {
+    id: "order-bd", status: "PENDING", country_code: "BD", currency_code: "BDT",
+    payment_method: "COD", total_minor: 25000, delivery_status: "NOT_DISPATCHED",
+    courier_name: null, courier_service: null, consignment_id: null,
+    tracking_url: null, delivery_notes: null
+  };
+  const DB = { prepare(sql) {
+    statements.push(sql);
+    return {
+      bind(...values) {
+        return {
+          first: async () => before,
+          run: async () => ({ meta: { changes: 1 } })
+        };
+      }
+    };
+  } };
+  const response = await worker.fetch(request("/api/admin/orders/delivery", "PATCH", JSON.stringify({
+    order_id: "order-bd", delivery_status: "READY_TO_SHIP",
+    courier_name: "Manual Test Courier", delivery_notes: "Parcel packed"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret", HR_ADMIN_OWNER_LABEL: "OWNER"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.delivery_status, "READY_TO_SHIP");
+  assert.equal(payload.cod_collected_minor_changed, false);
+  assert.match(payload.message, /not performed by this manual record/i);
+  assert.match(statements[1], /UPDATE orders SET/);
+  assert.match(statements[2], /INSERT INTO order_delivery_events/);
+});
+
+test("Bangladesh COD delivery rejects invalid transitions and non-HTTPS tracking URLs", async () => {
+  const before = {
+    id: "order-bd", status: "PENDING", country_code: "BD", currency_code: "BDT",
+    payment_method: "COD", total_minor: 1000, delivery_status: "NOT_DISPATCHED"
+  };
+  const DB = { prepare() { return { bind() { return { first: async () => before }; } }; } };
+  const invalidTransition = await worker.fetch(request("/api/admin/orders/delivery", "PATCH", JSON.stringify({
+    order_id: "order-bd", delivery_status: "DELIVERED"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(invalidTransition.status, 409);
+  const invalidUrl = await worker.fetch(request("/api/admin/orders/delivery", "PATCH", JSON.stringify({
+    order_id: "order-bd", tracking_url: "http://courier.example/track/1"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(invalidUrl.status, 400);
+});
+
+test("Bangladesh COD delivery API rejects unsupported methods", async () => {
+  const response = await worker.fetch(request("/api/admin/orders/delivery", "DELETE", undefined, {
+    authorization: "Bearer owner-secret"
+  }), { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" });
+  assert.equal(response.status, 405);
+});
