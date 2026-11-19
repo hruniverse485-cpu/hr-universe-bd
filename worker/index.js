@@ -1317,6 +1317,90 @@ async function createCodOrder(request, env) {
 }
 
 
+async function managePartnerInteractions(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const partnerType = text(url.searchParams.get("partner_type"), 20).toUpperCase();
+    const partnerId = text(url.searchParams.get("partner_id"), 100);
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+    if (partnerType && !["COURIER", "SUPPLIER"].includes(partnerType)) {
+      return json({ success: false, error: "partner_type must be COURIER or SUPPLIER" }, 400);
+    }
+    try {
+      let query = "SELECT id, partner_type, partner_id, interaction_type, direction, subject, summary, outcome, follow_up_at, approval_status, evidence_reference, created_by, created_at FROM partner_interactions";
+      const conditions = [];
+      const values = [];
+      if (partnerType) { conditions.push("partner_type = ?"); values.push(partnerType); }
+      if (partnerId) { conditions.push("partner_id = ?"); values.push(partnerId); }
+      if (conditions.length) query += " WHERE " + conditions.join(" AND ");
+      query += " ORDER BY COALESCE(follow_up_at, created_at) ASC, created_at DESC LIMIT ?";
+      values.push(limit);
+      const result = await env.DB.prepare(query).bind(...values).all();
+      return json({ success: true, interactions: result.results || [] });
+    } catch (error) {
+      console.error("Partner interaction listing failed:", error);
+      return json({ success: false, error: "Unable to load partner interactions" }, 500);
+    }
+  }
+
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 12000) return json({ success: false, error: "Request body is too large" }, 413);
+    data = JSON.parse(raw);
+  } catch {
+    return json({ success: false, error: "Invalid JSON body" }, 400);
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return json({ success: false, error: "A JSON object is required" }, 400);
+  }
+
+  const partnerType = text(data.partner_type, 20).toUpperCase();
+  const partnerId = text(data.partner_id, 100);
+  const interactionType = text(data.interaction_type, 30).toUpperCase();
+  const summary = text(data.summary, 4000);
+  const allowedTypes = ["RESEARCH", "EMAIL", "PHONE", "WHATSAPP", "MEETING", "QUOTE_RECEIVED", "CONTRACT", "SUPPORT_CASE", "FOLLOW_UP", "OTHER"];
+  if (!["COURIER", "SUPPLIER"].includes(partnerType) || !partnerId || !allowedTypes.includes(interactionType) || !summary) {
+    return json({ success: false, error: "partner_type, partner_id, valid interaction_type and summary are required" }, 400);
+  }
+  const followUpAt = text(data.follow_up_at, 40) || null;
+  if (followUpAt && !/^\\d{4}-\\d{2}-\\d{2}(?:T\\d{2}:\\d{2}(?::\\d{2})?(?:Z|[+-]\\d{2}:?\\d{2})?)?$/.test(followUpAt)) {
+    return json({ success: false, error: "follow_up_at must be an ISO date or datetime" }, 400);
+  }
+
+  try {
+    const table = partnerType === "COURIER" ? "courier_partners" : "suppliers";
+    const partner = await env.DB.prepare("SELECT id FROM " + table + " WHERE id = ?").bind(partnerId).first();
+    if (!partner) return json({ success: false, error: "Partner was not found" }, 404);
+    const id = crypto.randomUUID();
+    const subject = text(data.subject, 200) || null;
+    const outcome = text(data.outcome, 1000) || null;
+    const evidence = text(data.evidence_reference, 500) || null;
+    const result = await env.DB.prepare(`
+      INSERT INTO partner_interactions (
+        id, partner_type, partner_id, interaction_type, direction,
+        subject, summary, outcome, follow_up_at, approval_status,
+        evidence_reference, created_by
+      ) VALUES (?, ?, ?, ?, 'INTERNAL', ?, ?, ?, ?, 'INTERNAL_NOTE', ?, 'OWNER')
+    `).bind(id, partnerType, partnerId, interactionType, subject, summary, outcome, followUpAt, evidence).run();
+    return json({
+      success: true,
+      message: "Internal partner note saved. No message was sent and no partner was contacted.",
+      interaction: { id, partner_type: partnerType, partner_id: partnerId, interaction_type: interactionType, direction: "INTERNAL", approval_status: "INTERNAL_NOTE" }
+    }, 201);
+  } catch (error) {
+    console.error("Partner interaction save failed:", error);
+    return json({ success: false, error: "Unable to save partner interaction" }, 500);
+  }
+}
+
 async function manageCourierPartners(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
@@ -1411,7 +1495,7 @@ export default {
 
     if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
 
-    if (path === "/api/admin/partners/couriers") return manageCourierPartners(request, env);
+    if (path === "/api/admin/partners/couriers") return manageCourierPartners(request, env);\n\n    if (path === "/api/admin/partners/interactions") return managePartnerInteractions(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
       if (request.method !== "GET") {
