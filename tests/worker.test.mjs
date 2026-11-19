@@ -1067,3 +1067,35 @@ test("partner operations dashboard exposes service-area and supplier profile/quo
   assert.ok(start >= 0 && end > start);
   assert.doesNotThrow(() => new Script(page.slice(start + 8, end)));
 });
+
+
+test("partner recommendations require owner authentication and remain pending", async () => {
+  const denied = await worker.fetch(request("/api/admin/partners/recommendations", "GET"), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } }, HR_ADMIN_API_TOKEN: "owner-secret"
+  });
+  assert.equal(denied.status, 401);
+  let insertSql = "";
+  const DB = { prepare(sql) { insertSql = sql; return { bind(...values) { return { run: async () => ({ success: true }) }; } }; } };
+  const response = await worker.fetch(request("/api/admin/partners/recommendations", "POST", JSON.stringify({
+    recommendation_type: "COURIER_SELECTION", recommendation_json: { courier: "candidate-1" },
+    confidence_score: 0.7, evidence_summary: "Illustrative evidence only", status: "APPROVED"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), { DB, HR_ADMIN_API_TOKEN: "owner-secret" });
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.recommendation.status, "PENDING_REVIEW");
+  assert.match(insertSql, /'PENDING_REVIEW'/);
+});
+
+test("partner recommendation review only records approval and never executes operations", async () => {
+  let sql = "";
+  const DB = { prepare(statement) { sql = statement; return { bind() { return { run: async () => ({ meta: { changes: 1 } }) }; } }; } };
+  const response = await worker.fetch(request("/api/admin/partners/recommendations", "PATCH", JSON.stringify({
+    id: "rec-1", status: "APPROVED"
+  }), { authorization: "Bearer owner-secret", "content-type": "application/json" }), {
+    DB, HR_ADMIN_API_TOKEN: "owner-secret", HR_ADMIN_OWNER_LABEL: "OWNER"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.match(sql, /WHERE id = \? AND status = 'PENDING_REVIEW'/);
+  assert.match(payload.message, /does not execute/i);
+});
