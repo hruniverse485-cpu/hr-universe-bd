@@ -213,6 +213,52 @@ try:
     if db.execute("SELECT quantity FROM inventory WHERE id='inv'").fetchone()[0] != 2:
         fail("Failed reservation changed available inventory")
 
+    # The final database reservation gate must reject stale and future-dated
+    # verification evidence even when a caller bypasses the public catalog.
+    db.execute("INSERT INTO products (id, category_id, name, slug, status) VALUES ('stale-prod', 'cat', 'Stale stock product', 'stale-stock-product', 'ACTIVE')")
+    db.execute("INSERT INTO product_variants (id, product_id, sku, status) VALUES ('stale-var', 'stale-prod', 'STALE-1', 'ACTIVE')")
+    db.execute("INSERT INTO inventory (id, warehouse_id, product_id, variant_id, quantity, verified_at) VALUES ('inv-stale', 'wh', 'stale-prod', 'stale-var', 4, datetime('now', '-73 hours'))")
+    insert_order("order-stale")
+    try:
+        with db:
+            db.execute(
+                """INSERT INTO order_items (
+                    id, order_id, product_id, variant_id, product_name_snapshot,
+                    unit_price_minor, currency_code, quantity, line_total_minor,
+                    fulfillment_type
+                ) VALUES ('item-stale', 'order-stale', 'stale-prod', 'stale-var',
+                          'Stale stock product', 1000, 'BDT', 1, 1000, 'LOCAL_WAREHOUSE')"""
+            )
+    except sqlite3.IntegrityError as exc:
+        if "fresh verification required" not in str(exc):
+            fail(f"Stale stock was rejected for an unexpected reason: {exc}")
+    else:
+        fail("Atomic reservation accepted stock verified more than 72 hours ago")
+    if db.execute("SELECT quantity FROM inventory WHERE id='inv-stale'").fetchone()[0] != 4:
+        fail("Rejected stale-stock reservation changed inventory")
+
+    db.execute("INSERT INTO products (id, category_id, name, slug, status) VALUES ('future-prod', 'cat', 'Future stock product', 'future-stock-product', 'ACTIVE')")
+    db.execute("INSERT INTO product_variants (id, product_id, sku, status) VALUES ('future-var', 'future-prod', 'FUTURE-1', 'ACTIVE')")
+    db.execute("INSERT INTO inventory (id, warehouse_id, product_id, variant_id, quantity, verified_at) VALUES ('inv-future', 'wh', 'future-prod', 'future-var', 4, datetime('now', '+1 hour'))")
+    insert_order("order-future")
+    try:
+        with db:
+            db.execute(
+                """INSERT INTO order_items (
+                    id, order_id, product_id, variant_id, product_name_snapshot,
+                    unit_price_minor, currency_code, quantity, line_total_minor,
+                    fulfillment_type
+                ) VALUES ('item-future', 'order-future', 'future-prod', 'future-var',
+                          'Future stock product', 1000, 'BDT', 1, 1000, 'LOCAL_WAREHOUSE')"""
+            )
+    except sqlite3.IntegrityError as exc:
+        if "fresh verification required" not in str(exc):
+            fail(f"Future-dated stock was rejected for an unexpected reason: {exc}")
+    else:
+        fail("Atomic reservation accepted future-dated verification evidence")
+    if db.execute("SELECT quantity FROM inventory WHERE id='inv-future'").fetchone()[0] != 4:
+        fail("Rejected future-dated reservation changed inventory")
+
     db.execute("UPDATE orders SET status='CANCELLED' WHERE id='order-a'")
     restored = db.execute("SELECT quantity FROM inventory WHERE id='inv'").fetchone()[0]
     if restored != 5:
