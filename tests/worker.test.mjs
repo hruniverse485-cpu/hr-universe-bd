@@ -1505,6 +1505,9 @@ test("Catalog dashboard script is valid and does not persist owner credentials",
   assert.match(html,/PENDING/);
   assert.match(html,/Activate selected/);
   assert.match(html,/id="newProduct"/);
+  assert.match(html,/id="productEditNotice"/);
+  assert.match(html,/locked=chosen\?\.status==="ACTIVE"/);
+  assert.match(html,/Pause it before editing its details/);
   assert.match(html,/function fillProductForm\(p\)/);
   assert.match(html,/f\.elements\.id\.value=p\?\.id/);
   assert.match(html,/fillProductForm\(products\.find\(p=>p\.id===selected\)\)/);
