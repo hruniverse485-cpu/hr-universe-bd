@@ -1993,7 +1993,7 @@ async function manageBangladeshCodLedger(request, env) {
       if (!orderId || !allowedTypes.includes(entryType) || amount === null || !evidence || !Number.isFinite(Date.parse(occurredAt))) {
         return json({ success: false, error: "A valid order, entry type, positive BDT amount, evidence reference and occurrence date are required" }, 400);
       }
-      const order = await env.DB.prepare(`SELECT id, country_code, currency_code, payment_method, delivery_status
+      const order = await env.DB.prepare(`SELECT id, country_code, currency_code, payment_method, delivery_status, total_minor
         FROM orders WHERE id = ?`).bind(orderId).first();
       if (!order) return json({ success: false, error: "Order not found" }, 404);
       if (order.country_code !== "BD" || order.currency_code !== "BDT" || order.payment_method !== "COD") {
@@ -2001,6 +2001,22 @@ async function manageBangladeshCodLedger(request, env) {
       }
       if (entryType === "CUSTOMER_COD_COLLECTED" && order.delivery_status !== "DELIVERED") {
         return json({ success: false, error: "Record customer COD collection only after delivery is marked DELIVERED" }, 409);
+      }
+      if (entryType === "CUSTOMER_COD_COLLECTED") {
+        const prior = await env.DB.prepare(`SELECT COALESCE(SUM(amount_minor), 0) AS amount
+          FROM cod_reconciliation_entries WHERE order_id = ? AND entry_type = 'CUSTOMER_COD_COLLECTED'`).bind(orderId).first();
+        if (!Number.isSafeInteger(Number(order.total_minor)) || amount + Number(prior?.amount || 0) > Number(order.total_minor)) {
+          return json({ success: false, error: "Customer COD collection entries cannot exceed the server-calculated order total" }, 409);
+        }
+      }
+      if (entryType === "COURIER_SETTLEMENT_RECEIVED") {
+        const totals = await env.DB.prepare(`SELECT
+          COALESCE(SUM(CASE WHEN entry_type = 'CUSTOMER_COD_COLLECTED' THEN amount_minor ELSE 0 END), 0) AS collected,
+          COALESCE(SUM(CASE WHEN entry_type = 'COURIER_SETTLEMENT_RECEIVED' THEN amount_minor ELSE 0 END), 0) AS settled
+          FROM cod_reconciliation_entries WHERE order_id = ?`).bind(orderId).first();
+        if (amount + Number(totals?.settled || 0) > Number(totals?.collected || 0)) {
+          return json({ success: false, error: "Courier settlement cannot exceed recorded customer COD collection" }, 409);
+        }
       }
       const id = crypto.randomUUID();
       await env.DB.prepare(`INSERT INTO cod_reconciliation_entries
@@ -2079,11 +2095,17 @@ async function manageBangladeshReturnInspections(request, env) {
     if (disposition === "RESTOCK_CANDIDATE" && !["SEALED_INTACT","OPENED_INTACT"].includes(condition)) {
       return json({ success: false, error: "Damaged, incomplete, wrong or missing parcels cannot be marked as restock candidates" }, 409);
     }
-    const order = await env.DB.prepare(`SELECT id, country_code, currency_code, payment_method, delivery_status
-      FROM orders WHERE id = ?`).bind(orderId).first();
+    const order = await env.DB.prepare(`SELECT o.id, o.country_code, o.currency_code, o.payment_method, o.delivery_status,
+      COALESCE((SELECT SUM(oi.quantity) FROM order_items oi WHERE oi.order_id = o.id), o.quantity) AS ordered_quantity
+      FROM orders o WHERE o.id = ?`).bind(orderId).first();
     if (!order) return json({ success: false, error: "Order not found" }, 404);
     if (order.country_code !== "BD" || order.currency_code !== "BDT" || order.payment_method !== "COD" || order.delivery_status !== "RETURNED") {
       return json({ success: false, error: "Return inspection is only available for returned Bangladesh BDT COD orders" }, 409);
+    }
+    const priorInspections = await env.DB.prepare(`SELECT COALESCE(SUM(inspected_quantity), 0) AS quantity
+      FROM order_return_inspections WHERE order_id = ?`).bind(orderId).first();
+    if (quantity + Number(priorInspections?.quantity || 0) > Number(order.ordered_quantity || 0)) {
+      return json({ success: false, error: "Cumulative inspected quantity cannot exceed the order quantity" }, 409);
     }
     const id = crypto.randomUUID();
     await env.DB.prepare(`INSERT INTO order_return_inspections
