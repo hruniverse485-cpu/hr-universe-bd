@@ -355,3 +355,12 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added regression assertions for the edit action, form ID binding, cancel control and audited save operation.
 - Changes are limited to `public/admin-catalog.html`, `tests/worker.test.mjs` and this status record on `feature/global-hybrid-rebuild`. No production data, database schema, Cloudflare resource, supplier account or paid service was changed.
 - CI and Node test execution have not yet been confirmed for this change.
+
+
+## Public product image URL privacy guard (2026-11-20)
+
+- Confirmed that the public product listing API previously returned stored `image_url` values directly and the storefront used them as image sources. This could disclose supplier/CDN hostnames or signed URL query strings.
+- Added a Worker response guard: only same-origin image paths are returned; external/protocol-relative URLs, unsafe schemes, API paths and malformed values become `null`; same-origin absolute URLs are reduced to path-only values with query strings/fragments removed.
+- Added regression coverage for safe and rejected URL classes. Existing schema and records are preserved; this does not create image upload capability.
+- Supplier-hosted image files must be migrated into HR UNIVERSE-controlled approved storage before becoming publicly visible. R2 remains unconfigured.
+- Feature branch only. CI validation for this checkpoint is pending; no production deployment, production migration, Cloudflare resource, paid service or supplier account was changed.
