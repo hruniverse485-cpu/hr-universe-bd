@@ -1970,6 +1970,9 @@ async function manageBangladeshCodLedger(request, env) {
         ORDER BY e.occurred_at DESC, e.created_at DESC LIMIT 200`).bind(...values).all();
       return json({ success: true, entries: result.results || [] });
     }
+    if (request.method !== "POST" && request.method !== "PATCH") {
+      return json({ success: false, error: "Method not allowed" }, 405);
+    }
 
     let data;
     try {
