@@ -523,30 +523,30 @@ function createOrderDbMock(batchError = null) {
   return {
     calls,
     prepare(sql) {
-      return {
-        bind(...values) {
+      const resolve = async (values = []) => {
+        calls.push({ type: "first", sql, values });
+        if (sql.includes("FROM orders") && sql.includes("idempotency_key")) return null;
+        if (sql.includes("FROM countries")) return { country_code: "BD" };
+        if (sql.includes("FROM currencies")) return { code: "BDT", decimal_places: 0 };
+        if (sql.includes("FROM product_variants")) return { id: "variant-1" };
+        if (sql.includes("FROM products p")) {
           return {
-            first: async () => {
-              calls.push({ type: "first", sql, values });
-              if (sql.includes("FROM orders") && sql.includes("idempotency_key")) return null;
-              if (sql.includes("FROM countries")) return { country_code: "BD" };
-              if (sql.includes("FROM currencies")) return { code: "BDT", decimal_places: 0 };
-              if (sql.includes("FROM product_variants")) return { id: "variant-1" };
-              if (sql.includes("FROM products p")) {
-                return {
-                  id: "product-1",
-                  name: "Verified product",
-                  price_minor: 1500,
-                  currency_code: "BDT",
-                  priced_variant_id: "variant-1",
-                  sku: "SKU-1"
-                };
-              }
-              if (sql.includes("FROM inventory i")) return { id: "inventory-1" };
-              if (sql.includes("FROM shipping_rates sr")) return { base_cost_minor: 100 };
-              throw new Error("Unexpected first() query: " + sql);
-            }
+            id: "product-1",
+            name: "Verified product",
+            price_minor: 1500,
+            currency_code: "BDT",
+            priced_variant_id: "variant-1",
+            sku: "SKU-1"
           };
+        }
+        if (sql.includes("FROM inventory i")) return { id: "inventory-1" };
+        if (sql.includes("FROM shipping_rates sr")) return { base_cost_minor: 100 };
+        throw new Error("Unexpected first() query: " + sql);
+      };
+      return {
+        first: () => resolve(),
+        bind(...values) {
+          return { first: () => resolve(values) };
         }
       };
     },
