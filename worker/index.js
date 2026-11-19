@@ -1942,6 +1942,165 @@ async function manageCourierPartners(request, env) {
   }
 }
 
+
+async function manageBangladeshCodDelivery(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner delivery access is not configured" }, 503);
+  const authorization = request.headers.get("Authorization") || "";
+  const suppliedToken = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!constantTimeEqual(suppliedToken, env.HR_ADMIN_API_TOKEN)) {
+    return json({ success: false, error: "Unauthorized" }, 401);
+  }
+
+  if (request.method === "GET") {
+    try {
+      const url = new URL(request.url);
+      const status = text(url.searchParams.get("delivery_status"), 30).toUpperCase();
+      const allowed = ["NOT_DISPATCHED","READY_TO_SHIP","SHIPPED","IN_TRANSIT","OUT_FOR_DELIVERY","DELIVERED","DELIVERY_FAILED","RETURNED"];
+      if (status && !allowed.includes(status)) return json({ success: false, error: "Invalid delivery status filter" }, 400);
+      const result = status
+        ? await env.DB.prepare(`SELECT id, product_name, quantity, customer_name, customer_phone, customer_address,
+            district, total_minor, currency_code, payment_method, status, delivery_status, courier_name,
+            courier_service, consignment_id, tracking_url, cod_amount_minor, cod_collected_minor,
+            delivered_at, delivery_notes, created_at
+            FROM orders WHERE country_code = 'BD' AND currency_code = 'BDT' AND payment_method = 'COD'
+            AND delivery_status = ? ORDER BY created_at DESC LIMIT 100`).bind(status).all()
+        : await env.DB.prepare(`SELECT id, product_name, quantity, customer_name, customer_phone, customer_address,
+            district, total_minor, currency_code, payment_method, status, delivery_status, courier_name,
+            courier_service, consignment_id, tracking_url, cod_amount_minor, cod_collected_minor,
+            delivered_at, delivery_notes, created_at
+            FROM orders WHERE country_code = 'BD' AND currency_code = 'BDT' AND payment_method = 'COD'
+            ORDER BY created_at DESC LIMIT 100`).all();
+      return json({ success: true, orders: result.results || [] });
+    } catch (error) {
+      console.error("Bangladesh COD delivery list failed:", error);
+      return json({ success: false, error: "Unable to load Bangladesh COD delivery orders" }, 500);
+    }
+  }
+
+  if (request.method !== "PATCH") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 8000) return json({ success: false, error: "Request too large" }, 413);
+    data = JSON.parse(raw);
+  } catch {
+    return json({ success: false, error: "Invalid JSON request" }, 400);
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return json({ success: false, error: "Invalid delivery update" }, 400);
+  }
+
+  const orderId = text(data.order_id, 100);
+  if (!orderId) return json({ success: false, error: "order_id is required" }, 400);
+  const nextStatus = data.delivery_status === undefined ? null : text(data.delivery_status, 30).toUpperCase();
+  const allowed = ["NOT_DISPATCHED","READY_TO_SHIP","SHIPPED","IN_TRANSIT","OUT_FOR_DELIVERY","DELIVERED","DELIVERY_FAILED","RETURNED"];
+  if (nextStatus && !allowed.includes(nextStatus)) return json({ success: false, error: "Invalid delivery status" }, 400);
+
+  const fields = {
+    courier_name: data.courier_name === undefined ? undefined : text(data.courier_name, 100),
+    courier_service: data.courier_service === undefined ? undefined : text(data.courier_service, 100),
+    consignment_id: data.consignment_id === undefined ? undefined : text(data.consignment_id, 150),
+    tracking_url: data.tracking_url === undefined ? undefined : text(data.tracking_url, 1000),
+    delivery_notes: data.delivery_notes === undefined ? undefined : text(data.delivery_notes, 1000)
+  };
+  if (fields.tracking_url) {
+    try {
+      const parsed = new URL(fields.tracking_url);
+      if (parsed.protocol !== "https:") throw new Error("HTTPS required");
+    } catch {
+      return json({ success: false, error: "Tracking URL must be a valid HTTPS URL" }, 400);
+    }
+  }
+  const supplied = Object.entries(fields).filter(([, value]) => value !== undefined);
+  if (!nextStatus && supplied.length === 0) return json({ success: false, error: "No delivery changes supplied" }, 400);
+
+  try {
+    const before = await env.DB.prepare(`SELECT id, status, country_code, currency_code, payment_method,
+      total_minor, delivery_status, courier_name, courier_service, consignment_id, tracking_url,
+      delivery_notes FROM orders WHERE id = ?`).bind(orderId).first();
+    if (!before) return json({ success: false, error: "Order not found" }, 404);
+    if (before.country_code !== "BD" || before.currency_code !== "BDT" || before.payment_method !== "COD") {
+      return json({ success: false, error: "Only Bangladesh BDT COD orders can enter this delivery workflow" }, 409);
+    }
+    if (["CANCELLED","REJECTED"].includes(before.status)) {
+      return json({ success: false, error: "Cancelled or rejected orders cannot be dispatched" }, 409);
+    }
+    const currentStatus = before.delivery_status || "NOT_DISPATCHED";
+    const transitions = {
+      NOT_DISPATCHED: ["READY_TO_SHIP"],
+      READY_TO_SHIP: ["SHIPPED","NOT_DISPATCHED"],
+      SHIPPED: ["IN_TRANSIT","OUT_FOR_DELIVERY","DELIVERY_FAILED","RETURNED"],
+      IN_TRANSIT: ["OUT_FOR_DELIVERY","DELIVERY_FAILED","RETURNED"],
+      OUT_FOR_DELIVERY: ["DELIVERED","DELIVERY_FAILED","RETURNED"],
+      DELIVERY_FAILED: ["READY_TO_SHIP","RETURNED"],
+      DELIVERED: [],
+      RETURNED: []
+    };
+    if (nextStatus && nextStatus !== currentStatus && !(transitions[currentStatus] || []).includes(nextStatus)) {
+      return json({ success: false, error: "Invalid delivery status transition", current_status: currentStatus }, 409);
+    }
+    if (nextStatus === "SHIPPED" && !fields.courier_name && !before.courier_name) {
+      return json({ success: false, error: "Assign a courier before marking the parcel as shipped" }, 400);
+    }
+
+    const updates = [];
+    const values = [];
+    if (nextStatus && nextStatus !== currentStatus) {
+      updates.push("delivery_status = ?");
+      values.push(nextStatus);
+    }
+    for (const [key, value] of supplied) {
+      if (value !== before[key]) {
+        updates.push(key + " = ?");
+        values.push(value || null);
+      }
+    }
+    if (updates.length === 0) return json({ success: true, unchanged: true, order_id: orderId });
+    updates.push("delivery_updated_at = CURRENT_TIMESTAMP");
+    if (nextStatus === "DELIVERED" && currentStatus !== "DELIVERED") updates.push("delivered_at = CURRENT_TIMESTAMP");
+    if (before.total_minor !== null && before.total_minor !== undefined) {
+      updates.push("cod_amount_minor = COALESCE(cod_amount_minor, ?)");
+      values.push(before.total_minor);
+    }
+    values.push(orderId, currentStatus);
+    const result = await env.DB.prepare(
+      `UPDATE orders SET ${updates.join(", ")} WHERE id = ? AND COALESCE(delivery_status, 'NOT_DISPATCHED') = ?`
+    ).bind(...values).run();
+    if (!result.meta || result.meta.changes !== 1) {
+      return json({ success: false, error: "Order delivery data changed; refresh and retry" }, 409);
+    }
+
+    const eventType = supplied.some(([key]) => ["courier_name","courier_service"].includes(key))
+      ? "COURIER_ASSIGNED"
+      : supplied.some(([key]) => ["consignment_id","tracking_url"].includes(key))
+        ? "TRACKING_UPDATED"
+        : nextStatus && nextStatus !== currentStatus ? "DELIVERY_STATUS_CHANGED" : "DELIVERY_NOTE";
+    const event = {
+      previous: currentStatus,
+      next: nextStatus || currentStatus,
+      changes: Object.fromEntries(supplied.map(([key, value]) => [key, value || null]))
+    };
+    await env.DB.prepare(`INSERT INTO order_delivery_events
+      (id, order_id, event_type, previous_value, new_value, note, actor)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(
+        crypto.randomUUID(), orderId, eventType, currentStatus, JSON.stringify(event),
+        fields.delivery_notes || null, text(env.HR_ADMIN_OWNER_LABEL, 80) || "OWNER"
+      ).run();
+
+    return json({
+      success: true,
+      message: "Delivery record updated. Courier booking, live tracking and COD payout are not performed by this manual record.",
+      order_id: orderId,
+      delivery_status: nextStatus || currentStatus,
+      cod_collected_minor_changed: false
+    });
+  } catch (error) {
+    console.error("Bangladesh COD delivery update failed:", error);
+    return json({ success: false, error: "Unable to update delivery record" }, 500);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
