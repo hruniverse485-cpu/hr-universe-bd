@@ -104,6 +104,18 @@ test("Product catalog honors a configured inventory freshness limit", async () =
   assert.equal(values.filter(value => value === "-24 hours").length, 2);
 });
 
+test("Inventory freshness configuration cannot exceed the atomic 72-hour reservation ceiling", async () => {
+  let values = [];
+  const DB = { prepare() { return { bind(...args) { values = args; return { all: async () => ({ results: [] }) }; } }; } };
+  const response = await worker.fetch(request("/api/products?country=BD&currency=BDT"), {
+    DB, HR_INVENTORY_MAX_AGE_HOURS: "120"
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.inventory_max_age_hours, 72);
+  assert.equal(values.filter(value => value === "-72 hours").length, 2);
+});
+
 test("Owner inventory list returns stale flags using the configured freshness limit", async () => {
   let sql = "";
   let values = [];
