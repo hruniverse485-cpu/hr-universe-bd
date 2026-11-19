@@ -539,39 +539,38 @@ async function createCodOrder(request, env) {
         }, 500);
       }
 
-      // Only verified local Bangladesh warehouse stock
-      // can currently be ordered with COD.
+      // The order_items INSERT trigger performs the authoritative atomic
+      // reservation inside the same D1 batch as the order write. This
+      // preflight check is only a friendly early response, not the lock.
+      if (!item.variantId) {
+        return json({
+          success: false,
+          error: `A verified active variant is required for ${product.name}`
+        }, 409);
+      }
 
       const stock = await env.DB.prepare(`
-        SELECT
-          COALESCE(SUM(i.quantity), 0) AS available
-
+        SELECT i.id
         FROM inventory i
-
-        JOIN warehouses w
-          ON w.id = i.warehouse_id
-
+        JOIN warehouses w ON w.id = i.warehouse_id
         WHERE i.product_id = ?
-          AND (
-            i.variant_id = ?
-            OR (? IS NULL AND i.variant_id IS NULL)
-          )
+          AND i.variant_id = ?
           AND w.country_code = 'BD'
           AND w.status = 'ACTIVE'
           AND i.verified_at IS NOT NULL
+          AND i.quantity >= ?
+        ORDER BY i.id
+        LIMIT 1
       `).bind(
         item.productId,
         item.variantId,
-        item.variantId
+        item.quantity
       ).first();
 
-      if (
-        !stock ||
-        Number(stock.available) < item.quantity
-      ) {
+      if (!stock) {
         return json({
           success: false,
-          error: `Insufficient verified Bangladesh stock for ${product.name}`
+          error: `Insufficient verified Bangladesh warehouse stock for ${product.name}`
         }, 409);
       }
 
