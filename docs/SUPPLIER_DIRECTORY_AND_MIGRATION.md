@@ -94,3 +94,16 @@ Normalize results into the existing products, product_variants, supplier_product
 
 ## Launch gates
 No supplier is ACTIVE for a destination until at least one test order or sufficiently strong documented verification confirms actual delivery performance, tracking, packaging and support. No checkout for a country until payment settlement, inventory reservation, shipping/tax/returns and customer support are also verified. No paid subscription, sample purchase, deposit, or supplier commitment without owner approval.
+
+
+## Implemented multi-supplier offer comparison foundation (2026-11-19)
+
+Migration `0007_verified_supplier_variant_offers.sql` adds variant-level supplier offers tied to stable HR UNIVERSE product and variant IDs. One HR variant can have multiple external supplier-variant offers without changing the customer-facing product ID. Each offer records source cost/currency, availability, approval state, quality/service/packaging/delivery scores, tracking and returns capability, packaging evidence, and supplier-branding exclusion.
+
+Destination shipping quotes are attached to the exact supplier variant offer. Quotes record destination, shipping method/cost/currency, delivery window, quote time/expiry, and a rational FX numerator/denominator with evidence reference for converting source product cost into destination-currency minor units. Comparison requires shipping currency to match the destination country's configured currency; cross-currency product cost requires explicit FX evidence. Missing or expired evidence is not silently guessed.
+
+The Worker now has an owner-token-protected read-only endpoint:
+`GET /api/admin/sourcing/compare?product_id=...&variant_id=...&destination=US`
+Configure `HR_ADMIN_API_TOKEN` as a Cloudflare Worker secret before use. It is not a public storefront endpoint. It returns only currently valid offers that are ACTIVE, available, linked to an ACTIVE supplier/source, quality-scored, packaging-confirmed (neutral or HR-branded), and explicitly exclude supplier branding from the customer package. The ranking weights quality 25%, service 15%, packaging 20%, delivery 15%, tracking 5%, returns 5%, and landed-cost competitiveness 15%. It returns PENDING_VERIFICATION when no eligible offer exists.
+
+This is comparison groundwork, not a live supplier integration: there is no supplier API client, automatic offer ingestion, FX feed, supplier outreach, offer-write/admin workflow, or supplier order placement yet. Scores and FX evidence must come from documented verification; no sample or synthetic supplier offer has been added to production data. The comparison endpoint never places orders.
