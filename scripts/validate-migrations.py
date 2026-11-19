@@ -48,6 +48,20 @@ try:
     if missing:
         fail("Missing required tables: " + ", ".join(missing))
 
+    # Catalog audit accepts the four documented entity types and rejects unknown types.
+    db.execute(
+        "INSERT INTO catalog_admin_audit (id, entity_type, entity_id, action, actor) VALUES (?, ?, ?, ?, ?)",
+        ("catalog-audit-category", "CATEGORY", "cat", "CATEGORY_CREATED", "VALIDATOR"),
+    )
+    try:
+        db.execute(
+            "INSERT INTO catalog_admin_audit (id, entity_type, entity_id, action, actor) VALUES (?, ?, ?, ?, ?)",
+            ("catalog-audit-invalid", "UNKNOWN", "x", "INVALID", "VALIDATOR"),
+        )
+        fail("Catalog audit accepted an unsupported entity type")
+    except sqlite3.IntegrityError:
+        pass
+
     order_columns = {
         row[1] for row in db.execute("PRAGMA table_info(orders)")
     }
