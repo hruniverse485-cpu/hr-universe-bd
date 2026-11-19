@@ -1981,6 +1981,7 @@ async function manageInventoryVerification(request, env) {
 
   try {
     if (request.method === "GET") {
+      const maxAgeHours = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 720) || 72;
       const result = await env.DB.prepare(`SELECT i.id AS inventory_id, i.product_id, p.name AS product_name,
         i.variant_id, pv.sku, pv.variant_name, i.warehouse_id, w.warehouse_name,
         w.city, i.quantity AS available_quantity,
@@ -1997,9 +1998,9 @@ async function manageInventoryVerification(request, env) {
         JOIN warehouses w ON w.id = i.warehouse_id
         WHERE w.country_code = 'BD'
         ORDER BY is_stale DESC, i.updated_at DESC LIMIT 200`).bind(
-          `-${integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 720) || 72} hours`
+          `-${maxAgeHours} hours`
         ).all();
-      return json({ success: true, inventory: result.results || [] });
+      return json({ success: true, inventory_max_age_hours: maxAgeHours, inventory: result.results || [] });
     }
     if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
 
