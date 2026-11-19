@@ -1316,6 +1316,81 @@ async function createCodOrder(request, env) {
   }
 }
 
+
+async function manageCourierPartners(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+
+  if (request.method === "GET") {
+    try {
+      const rows = await env.DB.prepare(`
+        SELECT id, partner_code, partner_name, website_url, onboarding_status,
+          api_status, cod_supported, pickup_supported, tracking_supported,
+          webhook_supported, fulfillment_supported, relationship_owner,
+          last_contacted_at, next_follow_up_at, contract_status,
+          contract_expires_at, created_at, updated_at
+        FROM courier_partners
+        ORDER BY CASE onboarding_status WHEN 'ACTIVE' THEN 0 WHEN 'ONBOARDING' THEN 1 ELSE 2 END,
+          partner_name COLLATE NOCASE
+        LIMIT 200
+      `).all();
+      return json({ success: true, partners: rows.results || [] });
+    } catch (error) {
+      console.error("Courier partner listing failed:", error);
+      return json({ success: false, error: "Unable to load courier partners" }, 500);
+    }
+  }
+
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 12000) return json({ success: false, error: "Request body is too large" }, 413);
+    data = JSON.parse(raw);
+  } catch {
+    return json({ success: false, error: "Invalid JSON body" }, 400);
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return json({ success: false, error: "A JSON object is required" }, 400);
+  }
+
+  const partnerName = text(data.partner_name, 160);
+  const partnerCode = text(data.partner_code, 60).toUpperCase();
+  const websiteUrl = text(data.website_url, 500);
+  if (!partnerName || !/^[A-Z0-9][A-Z0-9_-]{1,59}$/.test(partnerCode)) {
+    return json({ success: false, error: "A partner_name and valid partner_code are required" }, 400);
+  }
+  if (websiteUrl && !/^https:\/\/[a-z0-9.-]+(?::[0-9]+)?(?:\/[^\s]*)?$/i.test(websiteUrl)) {
+    return json({ success: false, error: "website_url must be a valid HTTPS URL" }, 400);
+  }
+
+  const id = crypto.randomUUID();
+  try {
+    await env.DB.prepare(`
+      INSERT INTO courier_partners (
+        id, partner_code, partner_name, website_url,
+        onboarding_status, api_status, cod_supported, pickup_supported,
+        tracking_supported, webhook_supported, fulfillment_supported,
+        contract_status, internal_notes
+      ) VALUES (?, ?, ?, ?, 'RESEARCH', 'NOT_ASSESSED', 0, 0, 0, 0, 0, 'NONE', ?)
+    `).bind(id, partnerCode, partnerName, websiteUrl || null,
+      text(data.internal_notes, 2000) || null).run();
+    return json({
+      success: true,
+      message: "Courier partner added to the research directory; no account has been connected.",
+      partner: { id, partner_code: partnerCode, partner_name: partnerName, onboarding_status: "RESEARCH", api_status: "NOT_ASSESSED" }
+    }, 201);
+  } catch (error) {
+    const message = String(error && error.message || "").toLowerCase();
+    if (message.includes("unique")) return json({ success: false, error: "That partner_code already exists" }, 409);
+    console.error("Courier partner creation failed:", error);
+    return json({ success: false, error: "Unable to add courier partner" }, 500);
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1334,7 +1409,7 @@ export default {
 
     if (path === "/api/admin/orders/cancel") return cancelPendingOrder(request, env);
 
-    if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);
+    if (path === "/api/admin/sourcing/offers") return manageSupplierOffers(request, env);\n\n    if (path === "/api/admin/partners/couriers") return manageCourierPartners(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
       if (request.method !== "GET") {
