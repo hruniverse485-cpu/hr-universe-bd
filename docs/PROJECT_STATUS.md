@@ -258,3 +258,12 @@ At every work session, record the current branch/head commit, changed files, tes
 - Expanded `scripts/validate-migrations.py` to exercise fresh-stock reservation, stale-stock rejection (73 hours), future-dated rejection, and unchanged inventory after rejected reservations in disposable SQLite.
 - GitHub Actions run [#306](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44575118597) passed on validation PR head `24774a41bc7277cf73ef71ace8b6d1cb993e0493`, based on Feature commit `4240f07a562f540ef764d28317dcecdf042d0ebf`: Worker syntax passed, all 110 Node tests passed, and all 15 ordered migrations passed disposable SQLite validation, including explicit stale (73-hour) and future-dated stock rejection checks. The temporary validation PR was closed unmerged.
 - No production D1 migration or deployment was performed. Apply migration 0015 only through an explicitly approved production migration process.
+
+
+## Live market-aware category discovery (2026-11-19)
+
+- Added public `GET /api/categories?country=BD&currency=BDT`. It returns only active categories that currently contain at least one active product with an active product-level market price, active currency/country, active variant, active Bangladesh warehouse, positive stock and fresh non-future verification evidence.
+- Product listing now includes each product's category slug. The storefront removes placeholder category labels and builds its category navigation from the live market-eligible category response; category navigation remains usable when the category request is temporarily unavailable.
+- The category endpoint validates the full market-code input rather than truncating overlong values into apparently valid country/currency codes.
+- GitHub Actions run [#313](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44575732518) passed on validation PR head `7c1c01010f6f3a0d76815587dac7c4ce94b5f1af`, based on Feature commit `fff6b6e387c0a43f0661a0b3b0bda8772e21d24f`: Worker syntax, all 113 Node tests, and all 15 ordered migrations passed. The temporary validation PR was closed unmerged.
+- No production deployment or D1 migration was performed.
