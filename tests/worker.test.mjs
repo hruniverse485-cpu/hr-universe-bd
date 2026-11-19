@@ -1450,6 +1450,11 @@ test("Catalog dashboard script is valid and does not persist owner credentials",
   assert.doesNotMatch(html,/localStorage|sessionStorage/);
   assert.match(html,/PENDING/);
   assert.match(html,/Activate selected/);
+  assert.match(html,/id="newProduct"/);
+  assert.match(html,/function fillProductForm\(p\)/);
+  assert.match(html,/f\.elements\.id\.value=p\?\.id/);
+  assert.match(html,/fillProductForm\(products\.find\(p=>p\.id===selected\)\)/);
+  assert.match(html,/New draft product form ready/);
 });
 
 test("Inventory verification requires owner authentication", async () => {
