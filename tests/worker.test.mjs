@@ -111,6 +111,76 @@ test("order management is not exposed without admin authentication", async () =>
   assert.equal(response.status, 403);
 });
 
+test("owner cancellation endpoint rejects missing owner credentials before database access", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/orders/cancel", "POST", JSON.stringify({ order_id: "order-1" })),
+    { DB: { prepare() { throw new Error("Database must not be queried"); } }, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 401);
+});
+
+test("owner cancellation endpoint cancels only pending orders with a conditional update", async () => {
+  const statements = [];
+  const DB = {
+    prepare(sql) {
+      statements.push(sql);
+      return {
+        bind(...values) {
+          return {
+            first: async () => ({ id: values[0], status: "PENDING" }),
+            run: async () => ({ meta: { changes: 1 } })
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/admin/orders/cancel", "POST", JSON.stringify({ order_id: "order-1" }), {
+      authorization: "Bearer owner-secret", "content-type": "application/json"
+    }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.order.status, "CANCELLED");
+  assert.equal(payload.inventory_release, "DATABASE_TRIGGER");
+  assert.match(statements[1], /WHERE id = \? AND status = 'PENDING'/);
+});
+
+test("owner cancellation endpoint refuses confirmed orders without changing status", async () => {
+  let updateAttempted = false;
+  const DB = {
+    prepare(sql) {
+      return {
+        bind() {
+          return {
+            first: async () => ({ id: "order-2", status: "CONFIRMED" }),
+            run: async () => { updateAttempted = true; return { meta: { changes: 1 } }; }
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(
+    request("/api/admin/orders/cancel", "POST", JSON.stringify({ order_id: "order-2" }), {
+      authorization: "Bearer owner-secret", "content-type": "application/json"
+    }),
+    { DB, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 409);
+  assert.equal(updateAttempted, false);
+});
+
+test("owner cancellation endpoint validates the order identifier", async () => {
+  const response = await worker.fetch(
+    request("/api/admin/orders/cancel", "POST", JSON.stringify({}), {
+      authorization: "Bearer owner-secret"
+    }),
+    { DB: {}, HR_ADMIN_API_TOKEN: "owner-secret" }
+  );
+  assert.equal(response.status, 400);
+});
+
 const storefrontSource = readFileSync(
   new URL("../public/index.html", import.meta.url),
   "utf8"
