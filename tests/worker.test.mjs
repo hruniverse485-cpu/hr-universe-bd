@@ -1155,8 +1155,8 @@ test("Bangladesh COD delivery update atomically records its audit event", async 
   assert.equal(payload.cod_collected_minor_changed, false);
   assert.match(payload.message, /not performed by this manual record/i);
   assert.match(statements[1].sql, /UPDATE orders SET/);
-  assert.match(statements[2].sql, /INSERT INTO order_delivery_events[\\s\\S]*WHERE EXISTS/);
-  assert.match(statements[2].sql, /delivery_updated_at = \\?/);
+  assert.match(statements[2].sql, /INSERT INTO order_delivery_events[\s\S]*WHERE EXISTS/);
+  assert.match(statements[2].sql, /delivery_updated_at = \?/);
   assert.equal(statements[2].values[1], "order-bd");
 });
 
