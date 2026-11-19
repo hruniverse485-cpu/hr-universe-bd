@@ -120,6 +120,43 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.ok(sql.includes("MAX(i.quantity)"));
   assert.deepEqual(values, ["-72 hours", "BD", "BDT", "-72 hours", "", "", "", 24]);
 });
+test("Public product images expose only same-origin paths, never supplier CDN hosts or signed URLs", async () => {
+  const DB = {
+    prepare() {
+      return {
+        bind() {
+          return {
+            all: async () => ({
+              results: [
+                { product_id: "local", image_url: "/media/product.webp" },
+                { product_id: "relative", image_url: "images/product.png" },
+                { product_id: "same-origin", image_url: "https://hr-universe.test/catalog/item.jpg?token=secret#preview" },
+                { product_id: "supplier", image_url: "https://supplier-cdn.example/item.jpg" },
+                { product_id: "protocol-relative", image_url: "//supplier-cdn.example/item.jpg" },
+                { product_id: "unsafe", image_url: "javascript:alert(1)" },
+                { product_id: "api-route", image_url: "/api/admin/catalog?token=secret" },
+                { product_id: "empty", image_url: null }
+              ]
+            })
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(request("/api/products?country=BD&currency=BDT"), { DB });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  const byId = Object.fromEntries(payload.products.map(product => [product.product_id, product.image_url]));
+  assert.equal(byId.local, "/media/product.webp");
+  assert.equal(byId.relative, "/images/product.png");
+  assert.equal(byId["same-origin"], "/catalog/item.jpg");
+  assert.equal(byId.supplier, null);
+  assert.equal(byId["protocol-relative"], null);
+  assert.equal(byId.unsafe, null);
+  assert.equal(byId["api-route"], null);
+  assert.equal(byId.empty, null);
+});
+
 test("Product catalog honors a configured inventory freshness limit", async () => {
   let values = [];
   const DB = { prepare() { return { bind(...args) { values = args; return { all: async () => ({ results: [] }) }; } }; } };
