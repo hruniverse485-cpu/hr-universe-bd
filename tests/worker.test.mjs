@@ -516,3 +516,90 @@ test("order fingerprint canonicalization ignores JSON object key order", async (
   assert.equal(response.status, 200);
   assert.equal(payload.duplicate, true);
 });
+
+
+function createOrderDbMock(batchError = null) {
+  const calls = [];
+  return {
+    calls,
+    prepare(sql) {
+      return {
+        bind(...values) {
+          return {
+            first: async () => {
+              calls.push({ type: "first", sql, values });
+              if (sql.includes("FROM orders") && sql.includes("idempotency_key")) return null;
+              if (sql.includes("FROM countries")) return { country_code: "BD" };
+              if (sql.includes("FROM currencies")) return { code: "BDT", decimal_places: 0 };
+              if (sql.includes("FROM product_variants")) return { id: "variant-1" };
+              if (sql.includes("FROM products p")) {
+                return {
+                  id: "product-1",
+                  name: "Verified product",
+                  price_minor: 1500,
+                  currency_code: "BDT",
+                  priced_variant_id: "variant-1",
+                  sku: "SKU-1"
+                };
+              }
+              if (sql.includes("FROM inventory i")) return { id: "inventory-1" };
+              if (sql.includes("FROM shipping_rates sr")) return { base_cost_minor: 100 };
+              throw new Error("Unexpected first() query: " + sql);
+            }
+          };
+        }
+      };
+    },
+    async batch(statements) {
+      calls.push({ type: "batch", count: statements.length });
+      if (batchError) throw new Error(batchError);
+      return statements.map(() => ({ success: true }));
+    }
+  };
+}
+
+const validOrderPayload = {
+  customer_name: "Test Buyer",
+  customer_phone: "01700000000",
+  customer_address: "Test Road, Dhaka",
+  district: "Dhaka",
+  country_code: "BD",
+  currency_code: "BDT",
+  payment_method: "COD",
+  items: [{ product_id: "product-1", variant_id: "variant-1", quantity: 2 }]
+};
+
+test("COD order creation prices from database and batches order with reserved-stock line item", async () => {
+  const DB = createOrderDbMock();
+  const response = await worker.fetch(
+    request("/api/orders", "POST", JSON.stringify(validOrderPayload), {
+      "content-type": "application/json",
+      "Idempotency-Key": "full-order-key-01"
+    }),
+    { DB }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.success, true);
+  assert.equal(payload.order.subtotal_minor, 3000);
+  assert.equal(payload.order.shipping_cost_minor, 100);
+  assert.equal(payload.order.total_minor, 3100);
+  assert.equal(DB.calls.filter(call => call.type === "batch").length, 1);
+  assert.equal(DB.calls.find(call => call.type === "batch").count, 2);
+});
+
+test("COD order creation maps an atomic stock race to conflict without reporting success", async () => {
+  const DB = createOrderDbMock("Insufficient verified stock for atomic reservation");
+  const response = await worker.fetch(
+    request("/api/orders", "POST", JSON.stringify(validOrderPayload), {
+      "content-type": "application/json",
+      "Idempotency-Key": "full-order-key-02"
+    }),
+    { DB }
+  );
+  const payload = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(payload.success, false);
+  assert.match(payload.error, /stock changed while placing/i);
+  assert.equal(DB.calls.filter(call => call.type === "batch").length, 1);
+});
