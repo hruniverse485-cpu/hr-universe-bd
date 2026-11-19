@@ -44,6 +44,215 @@ function minorToMajor(minor, decimals) {
   return minor / factor;
 }
 
+function constantTimeEqual(left, right) {
+  if (typeof left !== "string" || typeof right !== "string") return false;
+  let mismatch = left.length ^ right.length;
+  const length = Math.max(left.length, right.length);
+  for (let i = 0; i < length; i += 1) {
+    mismatch |= (left.charCodeAt(i % (left.length || 1)) || 0) ^
+      (right.charCodeAt(i % (right.length || 1)) || 0);
+  }
+  return mismatch === 0;
+}
+
+async function compareSupplierOffers(request, env) {
+  if (!env.DB) {
+    return json({ success: false, error: "Database connection unavailable" }, 503);
+  }
+  if (!env.HR_ADMIN_API_TOKEN) {
+    return json({ success: false, error: "Owner sourcing access is not configured" }, 503);
+  }
+
+  const authorization = request.headers.get("Authorization") || "";
+  const suppliedToken = authorization.startsWith("Bearer ")
+    ? authorization.slice(7)
+    : "";
+  if (!constantTimeEqual(suppliedToken, env.HR_ADMIN_API_TOKEN)) {
+    return json({ success: false, error: "Unauthorized" }, 401);
+  }
+
+  const url = new URL(request.url);
+  const productId = text(url.searchParams.get("product_id"), 100);
+  const variantId = text(url.searchParams.get("variant_id"), 100);
+  const destination = text(url.searchParams.get("destination"), 2).toUpperCase();
+  if (!productId || !variantId || !/^[A-Z]{2}$/.test(destination)) {
+    return json({
+      success: false,
+      error: "product_id, variant_id and a two-letter destination country are required"
+    }, 400);
+  }
+
+  try {
+    const result = await env.DB.prepare(`
+      SELECT
+        svo.id AS offer_id,
+        svo.product_id,
+        svo.variant_id,
+        svo.supplier_variant_id,
+        svo.supplier_sku,
+        svo.source_unit_cost_minor,
+        svo.source_currency_code,
+        svo.quality_score,
+        svo.service_score,
+        svo.packaging_score,
+        svo.delivery_score,
+        svo.packaging_status,
+        svo.supplier_branding_excluded,
+        svo.tracking_available,
+        svo.returns_supported,
+        svo.evidence_reference,
+        svo.verified_at,
+        svo.expires_at AS offer_expires_at,
+        s.id AS supplier_id,
+        s.supplier_name,
+        s.status AS supplier_status,
+        q.id AS shipping_quote_id,
+        q.shipping_method_code,
+        q.shipping_cost_minor,
+        q.currency_code AS destination_currency,
+        q.estimated_min_days,
+        q.estimated_max_days,
+        q.quoted_at,
+        q.expires_at AS quote_expires_at,
+        q.source_to_destination_fx_numerator,
+        q.source_to_destination_fx_denominator,
+        q.fx_evidence_reference,
+        c.currency_code AS required_destination_currency
+      FROM supplier_variant_offers svo
+      JOIN supplier_product_sources src ON src.id = svo.source_id
+      JOIN suppliers s ON s.id = src.supplier_id
+      JOIN supplier_variant_shipping_quotes q ON q.offer_id = svo.id
+      JOIN countries c ON c.country_code = q.destination_country_code
+      WHERE svo.product_id = ?
+        AND svo.variant_id = ?
+        AND q.destination_country_code = ?
+        AND c.is_active = 1
+        AND svo.approval_status = 'ACTIVE'
+        AND svo.availability_status = 'AVAILABLE'
+        AND src.source_status = 'AVAILABLE'
+        AND s.status = 'ACTIVE'
+        AND q.availability_status = 'AVAILABLE'
+        AND q.currency_code = c.currency_code
+        AND svo.verified_at IS NOT NULL
+        AND datetime(svo.verified_at) <= CURRENT_TIMESTAMP
+        AND (svo.expires_at IS NULL OR datetime(svo.expires_at) > CURRENT_TIMESTAMP)
+        AND datetime(q.quoted_at) <= CURRENT_TIMESTAMP
+        AND (q.expires_at IS NULL OR datetime(q.expires_at) > CURRENT_TIMESTAMP)
+        AND svo.quality_score IS NOT NULL
+        AND svo.service_score IS NOT NULL
+        AND svo.packaging_score IS NOT NULL
+        AND svo.delivery_score IS NOT NULL
+        AND svo.packaging_status IN ('NEUTRAL_CONFIRMED', 'BRANDED_CONFIRMED')
+        AND svo.supplier_branding_excluded = 1
+        AND (
+          svo.source_currency_code = q.currency_code
+          OR (
+            q.fx_evidence_reference IS NOT NULL
+            AND q.source_to_destination_fx_numerator > 0
+            AND q.source_to_destination_fx_denominator > 0
+          )
+        )
+      ORDER BY svo.id, q.quoted_at DESC
+    `).bind(productId, variantId, destination).all();
+
+    const offers = [];
+    for (const row of result.results || []) {
+      const convertedProductCost = Math.round(
+        Number(row.source_unit_cost_minor) *
+        Number(row.source_to_destination_fx_numerator) /
+        Number(row.source_to_destination_fx_denominator)
+      );
+      const shippingCost = Number(row.shipping_cost_minor);
+      const landedCost = convertedProductCost + shippingCost;
+      if (
+        !Number.isSafeInteger(convertedProductCost) ||
+        convertedProductCost < 0 ||
+        !Number.isSafeInteger(shippingCost) ||
+        shippingCost < 0 ||
+        !Number.isSafeInteger(landedCost)
+      ) continue;
+
+      offers.push({
+        offer_id: row.offer_id,
+        supplier_id: row.supplier_id,
+        supplier_name: row.supplier_name,
+        supplier_status: row.supplier_status,
+        product_id: row.product_id,
+        variant_id: row.variant_id,
+        supplier_variant_id: row.supplier_variant_id,
+        supplier_sku: row.supplier_sku,
+        source_unit_cost_minor: Number(row.source_unit_cost_minor),
+        source_currency_code: row.source_currency_code,
+        converted_product_cost_minor: convertedProductCost,
+        shipping_quote_id: row.shipping_quote_id,
+        shipping_method_code: row.shipping_method_code,
+        shipping_cost_minor: shippingCost,
+        currency_code: row.destination_currency,
+        landed_cost_minor: landedCost,
+        estimated_min_days: row.estimated_min_days,
+        estimated_max_days: row.estimated_max_days,
+        packaging_status: row.packaging_status,
+        supplier_branding_excluded: Boolean(row.supplier_branding_excluded),
+        tracking_available: Boolean(row.tracking_available),
+        returns_supported: Boolean(row.returns_supported),
+        quality_score: Number(row.quality_score),
+        service_score: Number(row.service_score),
+        packaging_score: Number(row.packaging_score),
+        delivery_score: Number(row.delivery_score),
+        evidence_reference: row.evidence_reference,
+        fx_evidence_reference: row.fx_evidence_reference,
+        verified_at: row.verified_at,
+        quote_expires_at: row.quote_expires_at
+      });
+    }
+
+    if (offers.length === 0) {
+      return json({
+        success: true,
+        product_id: productId,
+        variant_id: variantId,
+        destination,
+        status: "PENDING_VERIFICATION",
+        message: "No fully verified, currently valid supplier offer meets the destination and packaging requirements.",
+        offers: []
+      });
+    }
+
+    const minimumCost = Math.min(...offers.map(offer => offer.landed_cost_minor));
+    for (const offer of offers) {
+      const costScore = minimumCost > 0
+        ? Math.min(15, (minimumCost / offer.landed_cost_minor) * 15)
+        : 15;
+      offer.rank_score = Number((
+        offer.quality_score * 0.25 +
+        offer.service_score * 0.15 +
+        offer.packaging_score * 0.20 +
+        offer.delivery_score * 0.15 +
+        (offer.tracking_available ? 5 : 0) +
+        (offer.returns_supported ? 5 : 0) +
+        costScore
+      ).toFixed(2));
+    }
+    offers.sort((a, b) =>
+      b.rank_score - a.rank_score ||
+      a.landed_cost_minor - b.landed_cost_minor
+    );
+
+    return json({
+      success: true,
+      product_id: productId,
+      variant_id: variantId,
+      destination,
+      currency: offers[0].currency_code,
+      ranking_method: "quality 25%, service 15%, packaging 20%, delivery 15%, tracking 5%, returns 5%, landed-cost competitiveness 15%",
+      offers
+    });
+  } catch (error) {
+    console.error("Supplier comparison failed:", error);
+    return json({ success: false, error: "Unable to compare supplier offers" }, 500);
+  }
+}
+
 async function health(env) {
   if (!env.DB) {
     return json({
@@ -830,6 +1039,13 @@ export default {
       }
 
       return health(env);
+    }
+
+    if (path === "/api/admin/sourcing/compare") {
+      if (request.method !== "GET") {
+        return json({ success: false, error: "Method not allowed" }, 405);
+      }
+      return compareSupplierOffers(request, env);
     }
 
     if (path === "/api/products") {
