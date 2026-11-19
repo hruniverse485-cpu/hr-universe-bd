@@ -1056,3 +1056,14 @@ test("courier rate cards reject invalid fees and unsupported methods", async () 
   );
   assert.equal(response.status, 400);
 });
+
+
+test("partner operations dashboard exposes service-area and supplier profile/quote controls", () => {
+  const page = readFileSync(new URL("../public/admin-partners.html", import.meta.url), "utf8");
+  for (const id of ["areaForm","profileForm","quoteForm","loadAreas","loadQuotes"]) assert.match(page, new RegExp('id="' + id + '"'));
+  for (const route of ["/api/admin/partners/service-areas","/api/admin/partners/supplier-profiles","/api/admin/partners/supplier-quotes"]) assert.ok(page.includes(route));
+  const start = page.indexOf("<script>");
+  const end = page.indexOf("</script>", start);
+  assert.ok(start >= 0 && end > start);
+  assert.doesNotThrow(() => new Script(page.slice(start + 8, end)));
+});
