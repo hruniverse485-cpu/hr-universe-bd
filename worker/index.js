@@ -1971,9 +1971,14 @@ async function manageBangladeshCodLedger(request, env) {
       return json({ success: true, entries: result.results || [] });
     }
 
-    let raw = await request.text();
-    if (raw.length > 6000) return json({ success: false, error: "Request too large" }, 413);
-    const data = JSON.parse(raw);
+    let data;
+    try {
+      const raw = await request.text();
+      if (raw.length > 6000) return json({ success: false, error: "Request too large" }, 413);
+      data = JSON.parse(raw);
+    } catch {
+      return json({ success: false, error: "Invalid JSON request" }, 400);
+    }
     if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "Invalid ledger request" }, 400);
 
     if (request.method === "POST") {
@@ -2051,9 +2056,14 @@ async function manageBangladeshReturnInspections(request, env) {
       return json({ success: true, inspections: result.results || [] });
     }
     if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
-    const raw = await request.text();
-    if (raw.length > 5000) return json({ success: false, error: "Request too large" }, 413);
-    const data = JSON.parse(raw);
+    let data;
+    try {
+      const raw = await request.text();
+      if (raw.length > 5000) return json({ success: false, error: "Request too large" }, 413);
+      data = JSON.parse(raw);
+    } catch {
+      return json({ success: false, error: "Invalid JSON request" }, 400);
+    }
     if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "Invalid return inspection" }, 400);
     const orderId = text(data.order_id, 100);
     const condition = text(data.parcel_condition, 30).toUpperCase();
