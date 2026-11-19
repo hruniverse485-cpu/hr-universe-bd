@@ -756,8 +756,17 @@ async function createCodOrder(request, env) {
     try {
       await env.DB.batch(statements);
     } catch (error) {
+      const databaseMessage = String(error && error.message || "");
+
+      if (databaseMessage.includes("Insufficient verified stock for atomic reservation")) {
+        return json({
+          success: false,
+          error: "Stock changed while placing the order. Please review availability and try again."
+        }, 409);
+      }
+
       if (
-        String(error && error.message || "")
+        databaseMessage
           .toLowerCase()
           .includes("unique")
       ) {
