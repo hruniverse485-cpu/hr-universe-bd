@@ -1317,6 +1317,68 @@ async function createCodOrder(request, env) {
 }
 
 
+async function manageCourierServiceAreas(request, env) {
+  if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
+  if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!constantTimeEqual(token, env.HR_ADMIN_API_TOKEN)) return json({ success: false, error: "Unauthorized" }, 401);
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const courierId = text(url.searchParams.get("courier_id"), 100);
+    try {
+      let query = `SELECT a.id, a.courier_id, c.partner_name, a.country_code, a.district,
+        a.area_name, a.postcode, a.service_type, a.active, a.evidence_reference,
+        a.verified_at, a.valid_until
+        FROM courier_service_areas a JOIN courier_partners c ON c.id = a.courier_id`;
+      const values = [];
+      if (courierId) { query += " WHERE a.courier_id = ?"; values.push(courierId); }
+      query += " ORDER BY a.district COLLATE NOCASE, a.area_name COLLATE NOCASE LIMIT 500";
+      const result = await env.DB.prepare(query).bind(...values).all();
+      return json({ success: true, service_areas: result.results || [] });
+    } catch (error) {
+      console.error("Courier service-area listing failed:", error);
+      return json({ success: false, error: "Unable to load courier service areas" }, 500);
+    }
+  }
+  if (request.method !== "POST") return json({ success: false, error: "Method not allowed" }, 405);
+  let data;
+  try {
+    const raw = await request.text();
+    if (raw.length > 10000) return json({ success: false, error: "Request body is too large" }, 413);
+    data = JSON.parse(raw);
+  } catch { return json({ success: false, error: "Invalid JSON body" }, 400); }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return json({ success: false, error: "A JSON object is required" }, 400);
+  const courierId = text(data.courier_id, 100);
+  const district = text(data.district, 120);
+  const areaName = text(data.area_name, 120) || null;
+  const postcode = text(data.postcode, 20) || null;
+  const countryCode = text(data.country_code, 2).toUpperCase() || "BD";
+  const serviceType = text(data.service_type, 20).toUpperCase() || "STANDARD";
+  if (!courierId || !district || !/^[A-Z]{2}$/.test(countryCode) ||
+      !["STANDARD","EXPRESS","SAME_DAY","PICKUP_ONLY","RETURN_ONLY"].includes(serviceType)) {
+    return json({ success: false, error: "Courier, district, two-letter country code and valid service type are required" }, 400);
+  }
+  try {
+    const courier = await env.DB.prepare("SELECT id FROM courier_partners WHERE id = ?").bind(courierId).first();
+    if (!courier) return json({ success: false, error: "Courier partner was not found" }, 404);
+    const id = crypto.randomUUID();
+    await env.DB.prepare(`INSERT INTO courier_service_areas
+      (id, courier_id, country_code, district, area_name, postcode, service_type, active, evidence_reference, verified_at, valid_until)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, ?)`)
+      .bind(id, courierId, countryCode, district, areaName, postcode, serviceType,
+        text(data.evidence_reference, 500) || null, text(data.valid_until, 40) || null).run();
+    return json({
+      success: true,
+      message: "Service area saved as inactive and unverified. It cannot be used for courier selection.",
+      service_area: { id, courier_id: courierId, active: false, verified_at: null }
+    }, 201);
+  } catch (error) {
+    console.error("Courier service-area save failed:", error);
+    return json({ success: false, error: "Unable to save courier service area" }, 500);
+  }
+}
+
 async function manageCourierRates(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   if (!env.HR_ADMIN_API_TOKEN) return json({ success: false, error: "Owner partner access is not configured" }, 503);
@@ -1698,6 +1760,7 @@ export default {
 
     if (path === "/api/admin/partners/suppliers") return listLocalSuppliers(request, env);
 
+    if (path === "/api/admin/partners/service-areas") return manageCourierServiceAreas(request, env);
     if (path === "/api/admin/partners/courier-rates") return manageCourierRates(request, env);
 
     if (path === "/api/admin/sourcing/compare") {
