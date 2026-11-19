@@ -48,7 +48,7 @@ Pilot Mode is a controlled owner-operated trial of the Bangladesh courier and lo
 - Courier service-area capture and verification.
 - Rate-card validity/evidence checks and courier comparison engine.
 - Delivery assignment, tracking-event and exception workflows.
-- COD collection versus payout reconciliation and return inspection workflow.
+- COD collection versus payout reconciliation and return inspection workflow.\n- Owner-only COD evidence ledger with review states and separate customer-collection versus courier-settlement entries.\n- Returned-parcel inspection capture; no automatic inventory restock.
 - Admin dashboard integration/navigation and operational role/access review.
 - Production D1 backup, migration dry run, rollback plan and explicit owner authorization.
 - Live courier API credentials, sandbox access and test booking/tracking/cancel/webhook/COD tests, only after a courier is selected and authorized.
@@ -60,3 +60,8 @@ After the approved Worker deployment and migration are completed, open `/admin-p
 ## Current deployment state
 
 This runbook and related code are on `feature/global-hybrid-rebuild`. Migration `0011_bangladesh_partner_network.sql` has not been applied to production. The dashboard and APIs are not confirmed live. No courier or supplier is contracted or API-connected by this work.
+
+## Additional owner-only operations endpoints (Feature branch)
+- `/api/admin/orders/cod-ledger`: records evidence-backed COD collection, courier settlement, fees, refunds and adjustments. New entries remain pending review until an owner reviews them.
+- `/api/admin/orders/returns`: records returned parcel condition and disposition. It never modifies inventory.
+- Migration `0012_bangladesh_cod_reconciliation_returns.sql` adds the two evidence tables. Neither migration 0012 nor any other pending migration has been applied to production.
