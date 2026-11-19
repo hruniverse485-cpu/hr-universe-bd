@@ -522,6 +522,17 @@ async function listProducts(request, env) {
 
         cur.symbol AS currency_symbol,
         cur.decimal_places,
+        'LOCAL_WAREHOUSE' AS fulfillment_type,
+
+        (
+          SELECT COALESCE(SUM(i.quantity), 0)
+          FROM product_variants pv
+          JOIN inventory i ON i.product_id = p.id AND i.variant_id = pv.id
+          JOIN warehouses w ON w.id = i.warehouse_id
+          WHERE pv.product_id = p.id AND pv.status = 'ACTIVE'
+            AND w.country_code = co.country_code AND w.status = 'ACTIVE'
+            AND i.verified_at IS NOT NULL AND i.quantity > 0
+        ) AS available_quantity,
 
         (
           SELECT pi.image_url
@@ -561,6 +572,15 @@ async function listProducts(request, env) {
        AND cur.is_active = 1
 
       WHERE p.status = 'ACTIVE'
+        AND EXISTS (
+          SELECT 1
+          FROM product_variants pv
+          JOIN inventory i ON i.product_id = p.id AND i.variant_id = pv.id
+          JOIN warehouses w ON w.id = i.warehouse_id
+          WHERE pv.product_id = p.id AND pv.status = 'ACTIVE'
+            AND w.country_code = co.country_code AND w.status = 'ACTIVE'
+            AND i.verified_at IS NOT NULL AND i.quantity > 0
+        )
         AND (
           ? = ''
           OR p.name LIKE '%' || ? || '%'
