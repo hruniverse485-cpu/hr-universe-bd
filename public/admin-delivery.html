@@ -50,7 +50,7 @@ const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 const headers = () => ({Authorization:"Bearer "+ownerToken});
 function message(value){$("message").textContent=value;}
-function money(minor){if(minor===null||minor===undefined)return "Not available";return "৳"+(Number(minor)/100).toFixed(2);}
+function money(minor){if(minor===null||minor===undefined)return "Not available";return "৳"+Number(minor).toLocaleString("en-US");}
 async function loadOrders(){
  if(!ownerToken)return;
  $("refresh").disabled=true;
