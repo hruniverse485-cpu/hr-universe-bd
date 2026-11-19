@@ -107,3 +107,13 @@ The Worker now has an owner-token-protected read-only endpoint:
 Configure `HR_ADMIN_API_TOKEN` as a Cloudflare Worker secret before use. It is not a public storefront endpoint. It returns only currently valid offers that are ACTIVE, available, linked to an ACTIVE supplier/source, quality-scored, packaging-confirmed (neutral or HR-branded), and explicitly exclude supplier branding from the customer package. The ranking weights quality 25%, service 15%, packaging 20%, delivery 15%, tracking 5%, returns 5%, and landed-cost competitiveness 15%. It returns PENDING_VERIFICATION when no eligible offer exists.
 
 This is comparison groundwork, not a live supplier integration: there is no supplier API client, automatic offer ingestion, FX feed, supplier outreach, offer-write/admin workflow, or supplier order placement yet. Scores and FX evidence must come from documented verification; no sample or synthetic supplier offer has been added to production data. The comparison endpoint never places orders.
+
+
+## Owner-managed supplier offer workflow foundation (2026-11-19)
+
+The private `POST /api/admin/sourcing/offers` endpoint requires the `HR_ADMIN_API_TOKEN` Worker secret and currently supports:
+- `save_offer`: create or update a non-active supplier variant offer after validating its source/product/variant relationship and source currency.
+- `transition`: move an offer through review, sample, quality, destination, pause or reject states. Promotion to ACTIVE is evidence-gated and requires active supplier/source status, available stock, verification evidence, all quality/service/packaging/delivery scores, confirmed neutral or HR-branded packaging, supplier-branding exclusion, and a current destination-valid quote/FX evidence.
+- Offer supplier/product/variant identity cannot be edited in place. ACTIVE offers must be paused before editing. Changes write before/after audit snapshots to `supplier_offer_audit`.
+
+This remains a backend foundation, not a finished admin screen or live supplier integration. Shipping quote write UI/API, richer authorization roles, audit retention, and real supplier evidence still need completion. Do not activate a supplier without real documented checks.
