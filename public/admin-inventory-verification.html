@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>HR UNIVERSE — Inventory Verification</title>
+<style>
+:root{color-scheme:light;--ink:#172033;--muted:#65728a;--line:#dfe5ee;--navy:#10213d;--blue:#2456a6;--bg:#f4f6fa;--white:#fff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:var(--navy);color:white;padding:22px max(18px,calc((100% - 1120px)/2))}
+header h1{font-size:21px;margin:0 0 4px}header p{margin:0;color:#c8d3e5;font-size:13px}nav{margin-top:10px}nav a{color:#d8e5fb;margin-right:14px;font-size:13px}
+main{max-width:1120px;margin:24px auto;padding:0 16px 48px}.panel{background:var(--white);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px;box-shadow:0 3px 14px #17203308}
+h2{font-size:18px;margin:0 0 12px}.muted{color:var(--muted);font-size:13px}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:180px}label{font-size:12px;font-weight:700;color:#46536a}
+input,select,textarea{width:100%;border:1px solid #ccd5e2;border-radius:8px;padding:10px 11px;font:inherit;background:white;color:var(--ink)}textarea{min-height:70px}
+button{border:0;border-radius:8px;padding:10px 15px;background:var(--blue);color:white;font-weight:700;cursor:pointer}button.secondary{background:#e9eef7;color:#213553}button:disabled{opacity:.5;cursor:not-allowed}
+.notice{padding:10px 12px;border-radius:8px;background:#eef3fb;color:#344660;font-size:13px;margin:12px 0}
+.status{font-size:12px;font-weight:700;padding:3px 8px;border-radius:99px;background:#eef1f5;display:inline-block}
+.tablewrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:#59677e;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+tbody tr{cursor:pointer}tbody tr:hover{background:#f7f9fc}tbody tr.selected{background:#edf3fc}.hidden{display:none!important}.error{color:#a33324}.success{color:#1f7048}
+@media(max-width:640px){main{margin-top:14px}.panel{padding:14px}.field{min-width:100%}header{padding:18px}}
+</style>
+</head>
+<body>
+<header>
+<h1>HR UNIVERSE — Inventory Verification</h1>
+<p>Private owner workspace · Bangladesh warehouse stock</p>
+<nav><a href="/admin-delivery.html">Delivery</a><a href="/admin-partners.html">Partners</a><a href="/admin-cod-operations.html">COD & Returns</a></nav>
+</header>
+<main>
+<section class="panel">
+<h2>Owner access</h2>
+<div class="row">
+<div class="field"><label for="token">Owner API token (page memory only)</label><input id="token" type="password" autocomplete="off" placeholder="Paste owner token"></div>
+<button id="connect">Connect & load inventory</button><button class="secondary" id="disconnect">Disconnect</button>
+</div>
+<p id="message" class="muted" role="status">Not connected. No credentials are stored in browser storage.</p>
+</section>
+<div id="workspace" class="hidden">
+<section class="panel">
+<div class="row"><h2 style="flex:1;margin:0">Bangladesh inventory rows</h2><button class="secondary" id="refresh">Refresh</button></div>
+<p class="notice">The inventory quantity is the available (unreserved) quantity. Enter the physically counted total; the system subtracts active order reservations to calculate available stock. If physical count is below reserved units, the update is blocked. Evidence is required.</p>
+<div class="tablewrap"><table><thead><tr><th>Product / Variant</th><th>Warehouse</th><th>Available</th><th>Reserved</th><th>Last verified</th></tr></thead><tbody id="inventoryRows"><tr><td colspan="5" class="muted">Connect to load inventory.</td></tr></tbody></table></div>
+</section>
+<section class="panel">
+<h2>Verify selected stock</h2>
+<p id="selection" class="muted">Select an inventory row above.</p>
+<form id="verifyForm">
+<input type="hidden" name="inventory_id">
+<div class="row">
+<div class="field"><label>Physical quantity counted</label><input name="physical_quantity" type="number" min="0" max="1000000" step="1" required></div>
+<div class="field"><label>Evidence reference</label><input name="evidence_reference" maxlength="500" required placeholder="Count sheet / dated photo set / inspection reference"></div>
+</div>
+<div class="field" style="margin-top:10px"><label>Notes</label><textarea name="notes" maxlength="1000" placeholder="Who counted, where and any discrepancy"></textarea></div>
+<p style="margin:12px 0 0"><button id="save" type="submit" disabled>Save physical verification</button></p>
+</form>
+</section>
+</div>
+</main>
+<script>
+(() => {
+  let ownerToken = "";
+  let inventory = [];
+  let selected = null;
+  const $ = id => document.getElementById(id);
+  const message = (value, kind = "") => { $("message").textContent = value; $("message").className = kind; };
+  const esc = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+  const date = value => value ? new Date(value).toLocaleString() : "Never verified";
+  async function api(path, options = {}) {
+    if (!ownerToken) throw new Error("Connect with the owner token first");
+    const response = await fetch(path, { ...options, headers: {
+      "Authorization": "Bearer " + ownerToken,
+      ...(options.body ? {"Content-Type":"application/json"} : {}),
+      ...(options.headers || {})
+    }, cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.success === false) throw new Error(data.error || "Request failed");
+    return data;
+  }
+  function render() {
+    $("inventoryRows").innerHTML = inventory.length ? inventory.map(row =>
+      '<tr data-id="'+esc(row.inventory_id)+'" class="'+(selected===row.inventory_id?'selected':'')+'">'+
+      '<td><strong>'+esc(row.product_name)+'</strong><br><span class="muted">'+esc(row.variant_name||row.sku)+' · '+esc(row.sku)+'</span></td>'+
+      '<td>'+esc(row.warehouse_name)+(row.city?' · '+esc(row.city):'')+'</td>'+
+      '<td><span class="status">'+esc(row.available_quantity)+'</span></td>'+
+      '<td>'+esc(row.reserved_quantity)+'</td><td>'+esc(date(row.verified_at))+'</td></tr>'
+    ).join("") : '<tr><td colspan="5" class="muted">No Bangladesh inventory rows found.</td></tr>';
+  }
+  async function load() {
+    const data = await api("/api/admin/inventory/verification");
+    inventory = Array.isArray(data.inventory) ? data.inventory : [];
+    render();
+  }
+  $("connect").addEventListener("click", async () => {
+    ownerToken = $("token").value.trim();
+    if (!ownerToken) { message("Enter the owner token.", "error"); return; }
+    try { await load(); $("token").value = ""; $("workspace").classList.remove("hidden"); message("Connected. Token remains in page memory only.", "success"); }
+    catch (error) { ownerToken = ""; message(error.message, "error"); }
+  });
+  $("disconnect").addEventListener("click", () => {
+    ownerToken = ""; inventory = []; selected = null; $("token").value = "";
+    $("workspace").classList.add("hidden"); $("save").disabled = true;
+    message("Disconnected. Owner token cleared from page memory.");
+  });
+  $("refresh").addEventListener("click", () => load().then(()=>message("Inventory refreshed.","success")).catch(e=>message(e.message,"error")));
+  $("inventoryRows").addEventListener("click", event => {
+    const row = event.target.closest("tr[data-id]");
+    if (!row) return;
+    selected = row.dataset.id;
+    const item = inventory.find(x=>x.inventory_id===selected);
+    $("verifyForm").elements.inventory_id.value = selected;
+    $("verifyForm").elements.physical_quantity.value = Number(item.available_quantity||0)+Number(item.reserved_quantity||0);
+    $("selection").textContent = item.product_name+" · "+(item.variant_name||item.sku)+" · "+item.warehouse_name+" · current physical estimate "+(Number(item.available_quantity||0)+Number(item.reserved_quantity||0));
+    $("save").disabled = false; render();
+  });
+  $("verifyForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    const button = $("save"); button.disabled = true;
+    const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+    body.physical_quantity = Number(body.physical_quantity);
+    try {
+      const result = await api("/api/admin/inventory/verification",{method:"POST",body:JSON.stringify(body)});
+      await load(); message("Stock verification saved. Available quantity: "+result.verification.available_quantity+".", "success");
+      $("verifyForm").elements.evidence_reference.value = ""; $("verifyForm").elements.notes.value = "";
+      $("selection").textContent = "Verification saved. Select a row to verify another inventory item.";
+      selected = null; $("verifyForm").elements.inventory_id.value = ""; render();
+    } catch(error) { message(error.message,"error"); button.disabled = false; }
+  });
+})();
+</script>
+</body>
+</html>
