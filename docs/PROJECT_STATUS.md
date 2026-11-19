@@ -127,3 +127,12 @@ At every work session, record the current branch/head commit, changed files, tes
 - Stock preflight is informational only; database triggers are authoritative. If stock changes between preflight and commit, the D1 batch fails and the API returns HTTP 409.
 - CI run [#39](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44432206502) succeeded for commit `b0a166393ac387a20313c1f179a2ed5a4730bc8f`: Worker syntax, 17 Node tests, migration application, reservation/depletion, insufficient-stock rollback, cancellation release, and no-double-release checks passed.
 - This is code/schema validation on disposable SQLite plus Worker route tests. Migration 0006 has **not** been applied to production D1; no deployment occurred. Storefront checkout remains disabled pending payment/market and end-to-end verification.
+
+
+## Multi-supplier engine Phase 2 checkpoint (2026-11-19)
+
+- Added migration `0007_verified_supplier_variant_offers.sql`: multiple supplier offers per stable HR product variant; source price/currency; availability and approval lifecycle; quality, service, packaging and delivery scores; tracking/returns; neutral or HR-branded packaging evidence; explicit exclusion of supplier branding; destination-specific shipping quote and expiry; auditable FX conversion evidence.
+- Added owner-token-protected read-only Worker endpoint `GET /api/admin/sourcing/compare`. It requires the `HR_ADMIN_API_TOKEN` Worker secret and returns no offers unless supplier, source, offer, quote, verification, currency, FX, quality, and packaging requirements pass. No supplier identity or source cost is exposed through the public catalog API.
+- Ranking uses quality 25%, service 15%, packaging 20%, delivery 15%, tracking 5%, returns 5%, and landed-cost competitiveness 15%. It returns a pending-verification state rather than selecting an unverified supplier.
+- Added Node route-boundary tests and disposable SQLite validation for supplier variant integrity and destination quote eligibility.
+- No supplier account/API credentials, live supplier calls, supplier offers, supplier orders, FX feed, production D1 migration, deployment, or changes to `main` occurred. Existing Shafiq bhai CJ account remains untouched; the separate HR UNIVERSE CJ account is still required before CJ integration.
