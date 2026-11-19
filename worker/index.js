@@ -629,8 +629,8 @@ async function listProducts(request, env) {
 async function listCategories(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   const url = new URL(request.url);
-  const country = text(url.searchParams.get("country"), 2).toUpperCase();
-  const currency = text(url.searchParams.get("currency"), 3).toUpperCase();
+  const country = text(url.searchParams.get("country"), 10).toUpperCase();
+  const currency = text(url.searchParams.get("currency"), 10).toUpperCase();
   if (!/^[A-Z]{2}$/.test(country) || !/^[A-Z]{3}$/.test(currency)) {
     return json({ success: false, error: "Valid country and currency are required" }, 400);
   }
