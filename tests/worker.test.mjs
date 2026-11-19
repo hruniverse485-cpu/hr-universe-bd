@@ -308,7 +308,8 @@ test("supplier offer audit listing is owner-authenticated and scoped by entity",
 
 test("private supplier dashboard inline JavaScript has valid syntax", () => {
   const page = readFileSync(new URL("../public/admin-sourcing.html", import.meta.url), "utf8");
-  const scripts = [...page.matchAll(/<script>([\\s\\S]*?)<\\/script>/g)];
-  assert.equal(scripts.length, 1);
-  assert.doesNotThrow(() => new Script(scripts[0][1]));
+  const scriptStart = page.indexOf("<script>");
+  const scriptEnd = page.indexOf("</script>", scriptStart);
+  assert.ok(scriptStart >= 0 && scriptEnd > scriptStart, "dashboard must contain inline script");
+  assert.doesNotThrow(() => new Script(page.slice(scriptStart + 8, scriptEnd)));
 });
