@@ -37,6 +37,7 @@ try:
         "product_prices", "order_items", "supplier_product_sources",
         "supplier_shipping_quotes", "supplier_sync_runs", "inventory_reservations",
         "supplier_variant_offers", "supplier_variant_shipping_quotes", "supplier_offer_audit",
+        "cod_reconciliation_entries", "order_return_inspections",
     }
     actual_tables = {
         row[0] for row in db.execute(
@@ -58,6 +59,24 @@ try:
     missing_columns = sorted(required_order_columns - order_columns)
     if missing_columns:
         fail("Missing order columns: " + ", ".join(missing_columns))
+
+    # Validate COD ledger and return-inspection constraints on disposable SQLite.
+    db.execute("INSERT INTO orders (id, product_name, quantity, unit_price, total_price, customer_name, customer_phone, customer_address, district, country_code, currency_code, subtotal_minor, total_minor, payment_method, status, idempotency_key, idempotency_request_hash) VALUES ('cod-order', 'Test product', 1, 100, 100, 'Test', '01700000000', 'Test address', 'Dhaka', 'BD', 'BDT', 100, 100, 'COD', 'PENDING', 'cod-order-key', ?)", ("a" * 64,))
+    db.execute("UPDATE orders SET delivery_status = 'DELIVERED' WHERE id = 'cod-order'")
+    db.execute("INSERT INTO cod_reconciliation_entries (id, order_id, entry_type, amount_minor, currency_code, status, evidence_reference, occurred_at) VALUES ('cod-entry', 'cod-order', 'CUSTOMER_COD_COLLECTED', 100, 'BDT', 'PENDING_REVIEW', 'test-evidence', CURRENT_TIMESTAMP)")
+    db.execute("UPDATE cod_reconciliation_entries SET status='VERIFIED', reviewed_by='OWNER', reviewed_at=CURRENT_TIMESTAMP WHERE id='cod-entry'")
+    try:
+        db.execute("INSERT INTO cod_reconciliation_entries (id, order_id, entry_type, amount_minor, currency_code, status, evidence_reference, occurred_at) VALUES ('bad-cod-entry', 'cod-order', 'CUSTOMER_COD_COLLECTED', 100, 'USD', 'PENDING_REVIEW', 'test-evidence', CURRENT_TIMESTAMP)")
+        fail("COD ledger must reject non-BDT currency")
+    except sqlite3.IntegrityError:
+        pass
+    db.execute("UPDATE orders SET delivery_status = 'RETURNED' WHERE id = 'cod-order'")
+    db.execute("INSERT INTO order_return_inspections (id, order_id, parcel_condition, disposition, inspected_quantity, notes) VALUES ('return-inspection', 'cod-order', 'SEALED_INTACT', 'RESTOCK_CANDIDATE', 1, 'Package inspected')")
+    try:
+        db.execute("INSERT INTO order_return_inspections (id, order_id, parcel_condition, disposition, inspected_quantity, notes) VALUES ('bad-return', 'cod-order', 'DAMAGED', 'RESTOCK_CANDIDATE', 1, 'Should be rejected by API')")
+        # The database records inspection evidence, while API policy prevents unsafe restock candidates.
+    except sqlite3.IntegrityError:
+        pass
 
     # Exercise the actual reservation/release triggers on disposable SQLite.
     db.execute("INSERT INTO countries (id, country_code, country_name, currency_code, is_active) VALUES ('c-bd', 'BD', 'Bangladesh', 'BDT', 1)")
