@@ -44,6 +44,21 @@ function minorToMajor(minor, decimals) {
   return minor / factor;
 }
 
+function convertMinorByRatio(minorValue, numeratorValue, denominatorValue) {
+  const minor = integer(minorValue, 0, Number.MAX_SAFE_INTEGER);
+  const numerator = integer(numeratorValue, 1, Number.MAX_SAFE_INTEGER);
+  const denominator = integer(denominatorValue, 1, Number.MAX_SAFE_INTEGER);
+  if (minor === null || numerator === null || denominator === null) return null;
+
+  // BigInt keeps the multiplication and half-up rounding exact even when
+  // the intermediate product exceeds Number.MAX_SAFE_INTEGER.
+  const product = BigInt(minor) * BigInt(numerator);
+  const divisor = BigInt(denominator);
+  const rounded = (product + divisor / 2n) / divisor;
+  if (rounded > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  return Number(rounded);
+}
+
 function constantTimeEqual(left, right) {
   if (typeof left !== "string" || typeof right !== "string") return false;
   let mismatch = left.length ^ right.length;
@@ -168,10 +183,10 @@ async function compareSupplierOffers(request, env) {
 
     const offers = [];
     for (const row of result.results || []) {
-      const convertedProductCost = Math.round(
-        Number(row.source_unit_cost_minor) *
-        Number(row.source_to_destination_fx_numerator) /
-        Number(row.source_to_destination_fx_denominator)
+      const convertedProductCost = convertMinorByRatio(
+        row.source_unit_cost_minor,
+        row.source_to_destination_fx_numerator,
+        row.source_to_destination_fx_denominator
       );
       const shippingCost = Number(row.shipping_cost_minor);
       const landedCost = convertedProductCost + shippingCost;
