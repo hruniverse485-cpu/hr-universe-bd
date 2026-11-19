@@ -25,6 +25,13 @@ The storefront must never submit or control the final price. `POST /api/orders` 
 
 Public catalog eligibility uses a configurable freshness limit: `HR_INVENTORY_MAX_AGE_HOURS` accepts 1–720 hours and defaults to 72 hours when unset or invalid. Stock older than this limit is excluded from both the available-quantity calculation and product eligibility. The owner inventory dashboard flags stale rows and displays the active limit. This is a system-level default, not a guarantee that physical stock cannot change between checks.
 
+## Owner catalog management (Feature branch; migration 0014)
+- `GET/POST /api/admin/catalog` is owner-token protected. The private `/admin-catalog.html` dashboard manages draft product records, draft variants, and country/currency-specific prices.
+- New products and variants are created as `DRAFT`; new prices are created as `PENDING`. Every mutation is paired with a catalog audit record in the same D1 batch. A conditional audit insert makes a stale/no-op update fail rather than recording a false audit event.
+- Variant status can be changed separately. Price activation checks active category, market and currency, product not archived, variant active when variant-specific, and the validity window.
+- Product activation for the current BD/BDT storefront is gated on an active category and market, fresh verified Bangladesh warehouse stock, an active variant, and a valid active BD/BDT price. Public product listing independently repeats its stock/price eligibility checks.
+- Product image upload, bulk import, category editing, product-level pause/approval workflow refinements and complete storefront cart/checkout remain separate work. The dashboard is not production-accessible until the Worker is deployed with the owner token and migrations are applied to the intended database.
+
 ## Remaining storefront launch work
 
 - Product and variant administration for creating, editing, approving, pausing and archiving catalog items.
