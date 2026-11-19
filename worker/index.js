@@ -536,6 +536,7 @@ async function listProducts(request, env) {
             AND w.country_code = co.country_code AND w.status = 'ACTIVE'
             AND i.verified_at IS NOT NULL
             AND datetime(i.verified_at) >= datetime('now', ?)
+            AND datetime(i.verified_at) <= CURRENT_TIMESTAMP
             AND i.quantity > 0
         ) AS available_quantity,
 
@@ -586,6 +587,7 @@ async function listProducts(request, env) {
             AND w.country_code = co.country_code AND w.status = 'ACTIVE'
             AND i.verified_at IS NOT NULL
             AND datetime(i.verified_at) >= datetime('now', ?)
+            AND datetime(i.verified_at) <= CURRENT_TIMESTAMP
             AND i.quantity > 0
         )
         AND (
