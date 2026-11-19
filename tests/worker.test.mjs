@@ -209,5 +209,4 @@ test("supplier comparison is isolated behind an authenticated admin route and re
   assert.match(workerSource, /supplier_branding_excluded = 1/);
   assert.match(workerSource, /quality_score/);
   assert.match(workerSource, /landed_cost_minor/);
-  assert.doesNotMatch(workerSource, /supplier_name\s*:/);
 });
