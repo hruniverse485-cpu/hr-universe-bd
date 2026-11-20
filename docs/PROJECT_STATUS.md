@@ -372,3 +372,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added regression assertions for the default 72-hour query, future-timestamp exclusion, and a stricter configured 24-hour window.
 - GitHub Actions run [#44742167042](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44742167042) passed Worker syntax, all Worker API route tests, and ordered SQL migration validation.
 - Feature branch only. No production migration, deployment, customer order, payment, supplier action, paid service, or change to `main` occurred.
+
+## Storefront saved-products resilience (2026-11-20)
+
+- Hardened the customer storefront's saved-products (wishlist) persistence for browsers where local storage is blocked or unavailable: read/write failures no longer break the browsing experience.
+- Stored data is accepted only as a bounded array of short string product IDs; oversized lists are capped. After the live catalog loads, saved IDs that no longer exist in the eligible catalog are pruned.
+- Added regression assertions for storage guards, input validation, bounded persistence, and stale-ID pruning. Existing live-catalog behavior and the no-checkout/no-order storefront boundary remain unchanged.
+- GitHub Actions run [#44743831227](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44743831227) passed Worker syntax, all Worker API route tests (including storefront source/script checks), and ordered SQL migration validation.
+- Feature branch only. No customer orders, payment activation, production deployment, production migration, paid service, supplier action, or change to `main`.
