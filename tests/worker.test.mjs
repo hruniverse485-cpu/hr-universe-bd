@@ -787,8 +787,32 @@ test("COD order creation prices from database and batches order with reserved-st
   assert.equal(payload.order.subtotal_minor, 3000);
   assert.equal(payload.order.shipping_cost_minor, 100);
   assert.equal(payload.order.total_minor, 3100);
+  const stockPreflight = DB.calls.find(call =>
+    call.type === "first" && call.sql.includes("FROM inventory i")
+  );
+  assert.ok(stockPreflight, "order preflight must query warehouse inventory");
+  assert.match(stockPreflight.sql, /datetime\(i\.verified_at\) >= datetime\('now', \?\)/);
+  assert.match(stockPreflight.sql, /datetime\(i\.verified_at\) <= CURRENT_TIMESTAMP/);
+  assert.deepEqual(stockPreflight.values, ["product-1", "variant-1", "-72 hours", 2]);
   assert.equal(DB.calls.filter(call => call.type === "batch").length, 1);
   assert.equal(DB.calls.find(call => call.type === "batch").count, 2);
+});
+
+test("COD order preflight honors a stricter configured inventory freshness limit", async () => {
+  const DB = createOrderDbMock();
+  const response = await worker.fetch(
+    request("/api/orders", "POST", JSON.stringify(validOrderPayload), {
+      "content-type": "application/json",
+      "Idempotency-Key": "freshness-order-24"
+    }),
+    { DB, HR_INVENTORY_MAX_AGE_HOURS: "24" }
+  );
+  assert.equal(response.status, 201);
+  const stockPreflight = DB.calls.find(call =>
+    call.type === "first" && call.sql.includes("FROM inventory i")
+  );
+  assert.ok(stockPreflight);
+  assert.deepEqual(stockPreflight.values, ["product-1", "variant-1", "-24 hours", 2]);
 });
 
 test("COD order creation maps an atomic stock race to conflict without reporting success", async () => {
