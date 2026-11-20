@@ -364,3 +364,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added regression coverage for safe and rejected URL classes. Existing schema and records are preserved; this does not create image upload capability.
 - Supplier-hosted image files must be migrated into HR UNIVERSE-controlled approved storage before becoming publicly visible. R2 remains unconfigured.
 - Feature branch only. CI validation for this checkpoint is pending; no production deployment, production migration, Cloudflare resource, paid service or supplier account was changed.
+
+## COD order preflight freshness parity (2026-11-20)
+
+- Aligned the COD order's friendly inventory preflight query with migration 0015's authoritative atomic reservation rule. The preflight now requires verification within the configured 1–72 hour freshness window and rejects future-dated verification timestamps.
+- The default remains 72 hours; a stricter `HR_INVENTORY_MAX_AGE_HOURS` value (for example, 24) is honored consistently before the final D1 reservation trigger.
+- Added regression assertions for the default 72-hour query, future-timestamp exclusion, and a stricter configured 24-hour window.
+- GitHub Actions run [#44742167042](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44742167042) passed Worker syntax, all Worker API route tests, and ordered SQL migration validation.
+- Feature branch only. No production migration, deployment, customer order, payment, supplier action, paid service, or change to `main` occurred.
