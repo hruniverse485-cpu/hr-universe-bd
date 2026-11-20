@@ -339,6 +339,15 @@ test("storefront provides search, saved products, live category discovery, respo
   assert.match(storefrontSource, /prefers-reduced-motion/);
 });
 
+test("storefront saved-products storage tolerates blocked storage and prunes stale entries", () => {
+  assert.match(storefrontSource, /if \(Array\.isArray\(stored\)\)/);
+  assert.match(storefrontSource, /id\.length <= 100/);
+  assert.match(storefrontSource, /slice\(0,200\)/);
+  assert.match(storefrontSource, /try \{ localStorage\.setItem\("hu-saved-products"/);
+  assert.match(storefrontSource, /availableIds=new Set\(products\.map\(product=>String\(product\.product_id\)\)\)/);
+  assert.match(storefrontSource, /saved=new Set\(\[\.\.\.saved\]\.filter\(id=>availableIds\.has\(String\(id\)\)\)\)/);
+});
+
 test("storefront JavaScript parses without syntax errors", () => {
   const start = storefrontSource.indexOf("<script>");
   const end = storefrontSource.indexOf("</script>", start);
