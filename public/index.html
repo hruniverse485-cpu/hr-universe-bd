@@ -58,14 +58,22 @@
  let category = "all";
  let savedOnly = false;
  let saved = new Set();
- try { saved = new Set(JSON.parse(localStorage.getItem("hu-saved-products") || "[]")); } catch {}
+ try {
+   const stored = JSON.parse(localStorage.getItem("hu-saved-products") || "[]");
+   if (Array.isArray(stored)) {
+    saved = new Set(stored.filter(id => typeof id === "string" && id.length > 0 && id.length <= 100).slice(0,200));
+   }
+  } catch {}
  const money = (minor, symbol, decimals) => {
    const value = Number(minor) / (10 ** Number(decimals || 0));
    if (!Number.isFinite(value)) return "Price unavailable";
    return (symbol || "") + new Intl.NumberFormat(undefined,{maximumFractionDigits:Number(decimals||0)}).format(value);
  };
  const escapeHTML = value => String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
- function updateSaved(){document.getElementById("savedCount").textContent=saved.size;localStorage.setItem("hu-saved-products",JSON.stringify([...saved]));}
+ function updateSaved(){
+   document.getElementById("savedCount").textContent=saved.size;
+   try { localStorage.setItem("hu-saved-products",JSON.stringify([...saved].slice(0,200))); } catch {}
+  }
  function state(title,message,buttonText,handler){grid.innerHTML='<div class="state"><strong>'+escapeHTML(title)+'</strong>'+escapeHTML(message)+(buttonText?'<br><button class="outline-btn" id="stateAction" type="button">'+escapeHTML(buttonText)+'</button>':"")+'</div>';if(buttonText)document.getElementById("stateAction").addEventListener("click",handler);}
  function filtered(){
   const term=search.value.trim().toLowerCase();
@@ -116,6 +124,9 @@
    const payload=await response.json();
    if(!response.ok||!payload.success||!Array.isArray(payload.products))throw new Error(payload.error||"Catalog unavailable");
    products=payload.products;
+   const availableIds=new Set(products.map(product=>String(product.product_id)));
+   saved=new Set([...saved].filter(id=>availableIds.has(String(id))));
+   updateSaved();
    try{
     const categoryResponse=await fetch('/api/categories?country='+encodeURIComponent(COUNTRY)+'&currency='+encodeURIComponent(CURRENCY),{headers:{Accept:"application/json"}});
     const categoryPayload=await categoryResponse.json();
