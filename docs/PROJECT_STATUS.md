@@ -380,3 +380,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added regression assertions for storage guards, input validation, bounded persistence, and stale-ID pruning. Existing live-catalog behavior and the no-checkout/no-order storefront boundary remain unchanged.
 - GitHub Actions run [#44743831227](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44743831227) passed Worker syntax, all Worker API route tests (including storefront source/script checks), and ordered SQL migration validation.
 - Feature branch only. No customer orders, payment activation, production deployment, production migration, paid service, supplier action, or change to `main`.
+
+
+## Product catalog scale target: 1,000+ distinct products (2026-11-20)
+
+- Set the initial HR UNIVERSE catalog target to at least 1,000 distinct product listings, with architecture intended to scale beyond 1,000; 200 is not a business catalog ceiling.
+- Clarified that catalog count is not stock quantity: supplier-fulfilled products remain with suppliers and do not require HR UNIVERSE physical inventory. Owned stock is tracked only for products HR UNIVERSE physically holds.
+- Separated supplier availability, owned inventory, and customer order quantity; supplier stock must be verified and freshness-aware before it can support an orderable listing.
+- Added docs/PRODUCT_CATALOG_SCALE_POLICY.md, including product publication gates, international market/payment eligibility, and bounded pagination requirements.
+- Audit clarification: the public product API currently returns at most 50 products per request; this is a response page-size guard, not a 50-product catalog cap. The storefront currently requests up to 50. The 200 maximum found in the Worker applies to an owner-only local supplier directory listing, not the product catalog.
+- This is a policy/documentation checkpoint only. Scalable storefront pagination and supplier catalog ingestion remain implementation work. No products were fabricated or published, and no supplier account, payment, production database, deployment, paid service, or main branch was changed.
