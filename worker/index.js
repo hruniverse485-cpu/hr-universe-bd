@@ -1147,6 +1147,10 @@ async function createCodOrder(request, env) {
         }, 409);
       }
 
+      const inventoryMaxAgeHours = integer(
+        env.HR_INVENTORY_MAX_AGE_HOURS, 1, 72
+      ) || 72;
+      const inventoryMaxAgeModifier = `-${inventoryMaxAgeHours} hours`;
       const stock = await env.DB.prepare(`
         SELECT i.id
         FROM inventory i
@@ -1156,12 +1160,15 @@ async function createCodOrder(request, env) {
           AND w.country_code = 'BD'
           AND w.status = 'ACTIVE'
           AND i.verified_at IS NOT NULL
+          AND datetime(i.verified_at) >= datetime('now', ?)
+          AND datetime(i.verified_at) <= CURRENT_TIMESTAMP
           AND i.quantity >= ?
         ORDER BY i.id
         LIMIT 1
       `).bind(
         item.productId,
         item.variantId,
+        inventoryMaxAgeModifier,
         item.quantity
       ).first();
 
