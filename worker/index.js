@@ -510,6 +510,10 @@ async function listProducts(request, env) {
   ).toUpperCase();
 
   const q = text(url.searchParams.get("q"), 80);
+  const categorySlug = text(url.searchParams.get("category"), 100).toLowerCase();
+  if (categorySlug && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(categorySlug)) {
+    return json({ success: false, error: "Invalid category filter" }, 400);
+  }
 
   const limitRaw = Number.parseInt(
     url.searchParams.get("limit") || "24", 10
@@ -712,6 +716,10 @@ async function listProducts(request, env) {
         )
         AND (
           ? = ''
+          OR c.slug = ?
+        )
+        AND (
+          ? = ''
           OR p.created_at < ?
           OR (p.created_at = ? AND p.id < ?)
         )
@@ -728,6 +736,8 @@ async function listProducts(request, env) {
       q,
       q,
       q,
+      categorySlug,
+      categorySlug,
       cursorCreatedAt,
       cursorCreatedAt,
       cursorCreatedAt,
