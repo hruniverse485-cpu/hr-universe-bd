@@ -423,6 +423,8 @@ test("storefront offers a variant-aware local shopping bag without submitting or
   assert.match(storefrontSource, /available_quantity/);
   assert.match(storefrontSource, /syncQuantity/);
   assert.match(storefrontSource, /data-cart-quantity/);
+  assert.match(storefrontSource, /id="clearCart"/);
+  assert.match(storefrontSource, /cart=\[\];persistCart\(\);renderCart\(\)/);
   assert.match(storefrontSource, /quantity>Math\.min\(99,Number\(v\.available_quantity\)\)/);
   assert.match(storefrontSource, /Please choose a valid quantity within the confirmed available stock/);
   assert.match(storefrontSource, /localStorage\.setItem\("hu-cart-v1",JSON\.stringify\(cart\.map\(\(\{product_id,variant_id,quantity\}\)/);
