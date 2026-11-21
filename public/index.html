@@ -59,6 +59,7 @@
  let products = [];
  let nextCursor = null;
  let loadingMore = false;
+ let catalogRequestSequence = 0;
  let category = "all";
  let savedOnly = false;
  let saved = new Set();
@@ -176,8 +177,9 @@
  }
  async function loadProducts(append=false){
   const moreButton=document.getElementById("loadMoreProducts");
-  if(loadingMore)return;
+  if(append&&loadingMore)return;
   if(append&&!nextCursor)return;
+  const requestId=++catalogRequestSequence;
   loadingMore=append;
   if(!append){nextCursor=null;state("Opening the collection","Loading confirmed product listings…");}
   if(moreButton){moreButton.disabled=true;moreButton.textContent="Loading…";}
@@ -190,6 +192,7 @@
    if(append&&nextCursor){endpoint+='&cursor_created_at='+encodeURIComponent(nextCursor.created_at)+'&cursor_id='+encodeURIComponent(nextCursor.id);}
    const response=await fetch(endpoint,{headers:{Accept:"application/json"}});
    const payload=await response.json();
+   if(requestId!==catalogRequestSequence)return;
    if(!response.ok||!payload.success||!Array.isArray(payload.products))throw new Error(payload.error||"Catalog unavailable");
    products=append?products.concat(payload.products):payload.products;
    nextCursor=category!=="new"&&payload.has_more&&payload.next_cursor?payload.next_cursor:null;
@@ -204,10 +207,11 @@
    document.getElementById("marketLabel").textContent=payload.country+" · "+payload.currency;
    render();
   }catch(error){
+   if(requestId!==catalogRequestSequence)return;
    if(!append){products=[];state("The collection is taking a little break","We couldn’t connect to the live catalog. Please try again shortly. No demo products or fake prices are displayed.","Retry",loadProducts);}
    else if(moreButton){moreButton.disabled=false;moreButton.textContent="Retry loading more";}
    console.error("Catalog request failed",error);
-  }finally{loadingMore=false;if(moreButton){moreButton.disabled=false;moreButton.hidden=!nextCursor;moreButton.textContent="Load more products";}}
+  }finally{if(requestId===catalogRequestSequence){loadingMore=false;if(moreButton){moreButton.disabled=false;moreButton.hidden=!nextCursor;moreButton.textContent="Load more products";}}}
  }
  const categoryNav=document.querySelector(".nav");
  categoryNav.addEventListener("click",event=>{const btn=event.target.closest("[data-category]");if(!btn)return;category=btn.dataset.category;savedOnly=false;setActive(category);document.getElementById("catalogTitle").textContent=category==="new"?"Fresh arrivals":category==="all"?"A little of everything":btn.textContent.trim();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});loadProducts(false);});
