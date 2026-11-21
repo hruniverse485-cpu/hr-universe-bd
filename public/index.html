@@ -41,6 +41,7 @@
   <div class="section-heading"><div><span class="eyebrow">The collection</span><h2 id="catalogTitle">A little of everything</h2><p id="catalogSubtitle">Explore at your own pace. New discoveries are added as they become available.</p></div><span class="small-note" id="resultCount" aria-live="polite"></span></div>
   <div class="toolbar" id="filters"><button class="filter active" data-category="all">All finds</button><button class="filter" data-category="new">New arrivals</button><button class="filter" data-category="all">All categories</button><select class="sort" id="sortSelect" aria-label="Sort products"><option value="recent">Recently added</option><option value="name">Name A–Z</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select></div>
   <div class="product-grid" id="productGrid" aria-live="polite"><div class="state"><strong>Opening the collection</strong>Just a moment while we bring the latest available products into view.</div></div>
+  <div style="display:flex;justify-content:center;padding:26px 0"><button class="outline-btn" id="loadMoreProducts" type="button" hidden>Load more products</button></div>
  </section>
  <section class="editorial"><div><span class="eyebrow">A better way to browse</span><h2>Your curiosity sets the pace.</h2><p>Save interesting finds for later. Compare details when you’re ready. We’ll keep the experience clear, calm and easy to explore—whether you’re browsing for a moment or staying a little longer.</p></div><button class="outline-btn" id="backToTop" type="button">Back to the beginning ↑</button></section>
 </main>
@@ -102,6 +103,7 @@
   }).join("");
   grid.querySelectorAll("[data-save]").forEach(btn=>btn.addEventListener("click",()=>toggleSaved(btn.dataset.save)));
   grid.querySelectorAll("[data-open]").forEach(btn=>btn.addEventListener("click",()=>openProduct(btn.dataset.open)));
+  const moreButton=document.getElementById("loadMoreProducts");if(moreButton){moreButton.hidden=!nextCursor;moreButton.disabled=loadingMore;moreButton.textContent=loadingMore?"Loading…":"Load more products";}
  }
  function renderCategories(items){
   const host=document.getElementById("dynamicCategoryNav");
@@ -117,24 +119,38 @@
   document.getElementById("modalBody").innerHTML='<p>'+escapeHTML(p.description||"More information will be available as the product listing is completed.")+'</p><p><strong>'+escapeHTML(money(p.price_minor,p.currency_symbol,p.decimal_places))+'</strong></p>'+(p.brand?'<p>Brand: '+escapeHTML(p.brand)+'</p>':"");
   modal.classList.add("open");document.getElementById("modalClose").focus();
  }
- async function loadProducts(){
-  state("Opening the collection","Loading confirmed product listings…");
+ async function loadProducts(append=false){
+  const moreButton=document.getElementById("loadMoreProducts");
+  if(loadingMore)return;
+  if(append&&!nextCursor)return;
+  loadingMore=append;
+  if(!append){nextCursor=null;state("Opening the collection","Loading confirmed product listings…");}
+  if(moreButton){moreButton.disabled=true;moreButton.textContent="Loading…";}
   try{
-   const response=await fetch('/api/products?country='+encodeURIComponent(COUNTRY)+'&currency='+encodeURIComponent(CURRENCY)+'&limit=50',{headers:{Accept:"application/json"}});
+   let endpoint='/api/products?country='+encodeURIComponent(COUNTRY)+'&currency='+encodeURIComponent(CURRENCY)+'&limit=50';
+   if(append&&nextCursor){endpoint+='&cursor_created_at='+encodeURIComponent(nextCursor.created_at)+'&cursor_id='+encodeURIComponent(nextCursor.id);}
+   const response=await fetch(endpoint,{headers:{Accept:"application/json"}});
    const payload=await response.json();
    if(!response.ok||!payload.success||!Array.isArray(payload.products))throw new Error(payload.error||"Catalog unavailable");
-   products=payload.products;
+   products=append?products.concat(payload.products):payload.products;
+   nextCursor=payload.has_more&&payload.next_cursor?payload.next_cursor:null;
    const availableIds=new Set(products.map(product=>String(product.product_id)));
    saved=new Set([...saved].filter(id=>availableIds.has(String(id))));
    updateSaved();
-   try{
-    const categoryResponse=await fetch('/api/categories?country='+encodeURIComponent(COUNTRY)+'&currency='+encodeURIComponent(CURRENCY),{headers:{Accept:"application/json"}});
-    const categoryPayload=await categoryResponse.json();
-    if(categoryResponse.ok&&categoryPayload.success&&Array.isArray(categoryPayload.categories))renderCategories(categoryPayload.categories);
-   }catch(categoryError){console.warn("Category discovery unavailable",categoryError);}
+   if(!append){
+    try{
+     const categoryResponse=await fetch('/api/categories?country='+encodeURIComponent(COUNTRY)+'&currency='+encodeURIComponent(CURRENCY),{headers:{Accept:"application/json"}});
+     const categoryPayload=await categoryResponse.json();
+     if(categoryResponse.ok&&categoryPayload.success&&Array.isArray(categoryPayload.categories))renderCategories(categoryPayload.categories);
+    }catch(categoryError){console.warn("Category discovery unavailable",categoryError);}
+   }
    document.getElementById("marketLabel").textContent=payload.country+" · "+payload.currency;
    render();
-  }catch(error){products=[];state("The collection is taking a little break","We couldn’t connect to the live catalog. Please try again shortly. No demo products or fake prices are displayed.","Retry",loadProducts);console.error("Catalog request failed",error);}
+  }catch(error){
+   if(!append){products=[];state("The collection is taking a little break","We couldn’t connect to the live catalog. Please try again shortly. No demo products or fake prices are displayed.","Retry",loadProducts);}
+   else if(moreButton){moreButton.disabled=false;moreButton.textContent="Retry loading more";}
+   console.error("Catalog request failed",error);
+  }finally{loadingMore=false;if(moreButton){moreButton.disabled=false;moreButton.hidden=!nextCursor;moreButton.textContent="Load more products";}}
  }
  const categoryNav=document.querySelector(".nav");
  categoryNav.addEventListener("click",event=>{const btn=event.target.closest("[data-category]");if(!btn)return;category=btn.dataset.category;setActive(category);document.getElementById("catalogTitle").textContent=category==="new"?"Fresh arrivals":category==="all"?"A little of everything":btn.textContent.trim();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});render();});
@@ -142,6 +158,7 @@
  search.addEventListener("input",render);document.getElementById("sortSelect").addEventListener("change",render);
  document.getElementById("savedToggle").addEventListener("click",()=>{if(!saved.size){state("Your saved finds","Save products with the heart icon and they’ll be waiting here when you return.");return;}savedOnly=!savedOnly;category="all";search.value="";setActive("all");document.getElementById("catalogTitle").textContent=savedOnly?"Your saved finds":"A little of everything";render();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});});
  document.getElementById("savedExplore").addEventListener("click",()=>document.getElementById("savedToggle").click());
+ document.getElementById("loadMoreProducts").addEventListener("click",()=>loadProducts(true));
  document.getElementById("browseButton").addEventListener("click",()=>document.getElementById("catalog").scrollIntoView({behavior:"smooth"}));
  document.getElementById("exploreTop").addEventListener("click",()=>document.getElementById("catalog").scrollIntoView({behavior:"smooth"}));
  document.getElementById("backToTop").addEventListener("click",()=>window.scrollTo({top:0,behavior:"smooth"}));
