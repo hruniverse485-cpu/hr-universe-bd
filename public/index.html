@@ -56,6 +56,8 @@
  const count = document.getElementById("resultCount");
  const modal = document.getElementById("productModal");
  let products = [];
+ let nextCursor = null;
+ let loadingMore = false;
  let category = "all";
  let savedOnly = false;
  let saved = new Set();
