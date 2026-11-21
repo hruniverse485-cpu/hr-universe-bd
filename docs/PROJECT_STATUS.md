@@ -390,3 +390,12 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added docs/PRODUCT_CATALOG_SCALE_POLICY.md, including product publication gates, international market/payment eligibility, and bounded pagination requirements.
 - Audit clarification: the public product API currently returns at most 50 products per request; this is a response page-size guard, not a 50-product catalog cap. The storefront currently requests up to 50. The 200 maximum found in the Worker applies to an owner-only local supplier directory listing, not the product catalog.
 - This is a policy/documentation checkpoint only. Scalable storefront pagination and supplier catalog ingestion remain implementation work. No products were fabricated or published, and no supplier account, payment, production database, deployment, paid service, or main branch was changed.
+
+
+## Public catalog keyset pagination and storefront load-more (2026-11-21)
+
+- Replaced the public product endpoint's single-page-only retrieval with bounded keyset pagination. Requests remain capped at 50 products; a stable `(created_at DESC, id DESC)` cursor fetches the next page without an unbounded catalog response.
+- The endpoint fetches one extra row to determine `has_more`, returns a continuation cursor only when another page exists, validates cursor fields, and omits its internal cursor timestamp from public product records.
+- Updated the storefront with a Load more products control that appends pages, retains already loaded products and saved-product state, and handles retry/loading states without creating demo products or orders.
+- Added Worker regression coverage for cursor ordering, continuation cursor output, invalid cursor rejection, and storefront pagination wiring. Validation is pending the latest GitHub Actions run.
+- Feature branch only. No supplier catalog has been imported, no product records were fabricated/published, and no production DB, payment, deployment, paid service, supplier account, or main branch was changed.
