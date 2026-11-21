@@ -145,7 +145,8 @@
   grid.innerHTML=list.map(p=>{
    const id=escapeHTML(p.product_id);
    const image=p.image_url?'<img loading="lazy" src="'+escapeHTML(p.image_url)+'" alt="'+escapeHTML(p.name)+'" onerror="this.remove()">':'<span class="image-placeholder">A new discovery</span>';
-   const price=money(p.price_minor,p.currency_symbol,p.decimal_places);
+   const variantPrices=Array.isArray(p.variants)?p.variants.map(v=>Number(v.price_minor)).filter(value=>Number.isSafeInteger(value)&&value>0):[];
+   const price=variantPrices.length?"From "+money(Math.min(...variantPrices),p.currency_symbol,p.decimal_places):money(p.price_minor,p.currency_symbol,p.decimal_places);
    return '<article class="product"><div class="product-image">'+image+'<button class="save '+(saved.has(p.product_id)?"saved":"")+'" data-save="'+id+'" aria-label="Save '+escapeHTML(p.name)+'" aria-pressed="'+saved.has(p.product_id)+'" type="button">'+(saved.has(p.product_id)?"♥":"♡")+'</button></div><div class="product-info"><span class="category">'+escapeHTML(p.category_name||"Discovery")+'</span><h3 class="product-name">'+escapeHTML(p.name)+'</h3><p class="product-desc">'+escapeHTML((p.description||"A product to explore at your own pace.").slice(0,105))+'</p><div class="price">'+escapeHTML(price)+'</div><button class="product-open" data-open="'+id+'" type="button">Explore details</button></div></article>';
   }).join("");
   grid.querySelectorAll("[data-save]").forEach(btn=>btn.addEventListener("click",()=>toggleSaved(btn.dataset.save)));
