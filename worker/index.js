@@ -518,6 +518,14 @@ async function listProducts(request, env) {
   const limit = Number.isSafeInteger(limitRaw)
     ? Math.min(50, Math.max(1, limitRaw))
     : 24;
+  const cursorCreatedAt = text(url.searchParams.get("cursor_created_at"), 40);
+  const cursorId = text(url.searchParams.get("cursor_id"), 100);
+  if (Boolean(cursorCreatedAt) !== Boolean(cursorId)) {
+    return json({ success: false, error: "Both cursor_created_at and cursor_id are required together" }, 400);
+  }
+  if (cursorCreatedAt && (!/^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z)?$/.test(cursorCreatedAt) || !/^[A-Za-z0-9_-]{1,100}$/.test(cursorId))) {
+    return json({ success: false, error: "Invalid product catalog cursor" }, 400);
+  }
   const inventoryMaxAgeHours = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 72) || 72;
   const inventoryMaxAgeModifier = `-${inventoryMaxAgeHours} hours`;
 
@@ -539,6 +547,7 @@ async function listProducts(request, env) {
         p.slug,
         p.description,
         p.brand,
+        p.created_at AS catalog_cursor_created_at,
 
         c.id AS category_id,
         c.name AS category_name,
@@ -620,8 +629,13 @@ async function listProducts(request, env) {
           OR p.name LIKE '%' || ? || '%'
           OR p.description LIKE '%' || ? || '%'
         )
+        AND (
+          ? = ''
+          OR p.created_at < ?
+          OR (p.created_at = ? AND p.id < ?)
+        )
 
-      ORDER BY p.created_at DESC
+      ORDER BY p.created_at DESC, p.id DESC
       LIMIT ?
     `).bind(
       inventoryMaxAgeModifier,
@@ -631,16 +645,28 @@ async function listProducts(request, env) {
       q,
       q,
       q,
-      limit
+      cursorCreatedAt,
+      cursorCreatedAt,
+      cursorCreatedAt,
+      cursorId,
+      limit + 1
     ).all();
 
+    const rows = result.results || [];
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const lastRow = pageRows[pageRows.length - 1];
     return json({
       success: true,
       country,
       currency,
       inventory_max_age_hours: inventoryMaxAgeHours,
-      count: result.results.length,
-      products: (result.results || []).map((product) => ({
+      count: pageRows.length,
+      has_more: hasMore,
+      next_cursor: hasMore && lastRow?.catalog_cursor_created_at && lastRow?.product_id
+        ? { created_at: lastRow.catalog_cursor_created_at, id: lastRow.product_id }
+        : null,
+      products: pageRows.map(({ catalog_cursor_created_at, ...product }) => ({
         ...product,
         image_url: publicCatalogImageUrl(product.image_url, request.url)
       }))
