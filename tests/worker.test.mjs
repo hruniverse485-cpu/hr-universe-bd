@@ -121,7 +121,7 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.ok(sql.includes("pv.status = 'ACTIVE'"));
   assert.ok(sql.includes("vpp.status = 'ACTIVE'"));
   assert.ok(sql.includes("MAX(i.quantity)"));
-  assert.deepEqual(values, ["-72 hours", "-72 hours", "-72 hours", "BD", "BDT", "-72 hours", "", "", "", "", "", 25]);
+  assert.deepEqual(values, ["-72 hours", "-72 hours", "-72 hours", "BD", "BDT", "-72 hours", "", "", "", "", "", "", "", 25]);
 });
 test("Product catalog uses stable keyset pagination and reports a next cursor", async () => {
   let sql = ""; let values = [];
