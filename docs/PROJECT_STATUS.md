@@ -399,3 +399,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - Updated the storefront with a Load more products control that appends pages, retains already loaded products and saved-product state, and handles retry/loading states without creating demo products or orders.
 - Added Worker regression coverage for cursor ordering, continuation cursor output, invalid cursor rejection, and storefront pagination wiring. GitHub Actions run #44907094410 passed Worker syntax, all Worker API route tests, and ordered SQL migration validation.
 - Feature branch only. No supplier catalog has been imported, no product records were fabricated/published, and no production DB, payment, deployment, paid service, supplier account, or main branch was changed.
+
+
+## Public variant selection and local shopping bag (2026-11-21)
+
+- Extended the public product response with active variants only, including variant identifiers, SKU, display attributes, market price and fresh verified Bangladesh warehouse quantity. Variant-specific active price is preferred; the active product-level price is the fallback. Supplier identifiers, supplier costs and private sourcing details are not included.
+- Added a customer-facing variant selector and quantity control to product details. Quantity is bounded by the currently returned verified available quantity, and invalid additions receive clear feedback.
+- Added a local shopping bag that stores only product ID, variant ID and quantity (bounded to 50 lines and 1–99 units per line). It does not persist price, stock, supplier or customer details. Bag totals use currently loaded public catalog data and clearly exclude unconfirmed/unloaded items.
+- The bag is deliberately not connected to order creation or payment. Server-side checkout revalidation, shipping/tax calculation, payment eligibility and a complete fulfillment flow remain separate release gates. The UI explicitly states that adding an item does not reserve stock or place an order.
+- Added regression tests for variant selection, quantity bounds, ID-only bag persistence and the no-order/no-payment boundary. GitHub Actions run [#44908263088](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908263088) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
+- Feature branch only. No production order, payment, migration, deployment, supplier account, paid service, or main/backup branch was changed.
