@@ -427,3 +427,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - Removing an item or changing its quantity updates the bounded local ID-only bag. No price or inventory value is treated as authoritative, and the bag remains disconnected from checkout and order submission.
 - GitHub Actions run [#44908584015](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908584015) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
 - Feature branch only; no order, payment, production resource, supplier account, paid service, or main/backup branch was changed.
+
+
+## Shopping bag controls and catalog request race protection (2026-11-21)
+
+- Added a Clear bag action alongside existing per-item removal and quantity editing. The action resets only the browser's local shopping bag; it does not affect orders or inventory.
+- Added a monotonically increasing catalog request sequence so a slower earlier search/category response cannot overwrite a newer selection. A new search can supersede an in-flight load-more request; stale responses do not reset the active loading state.
+- Added regression assertions for the clear-bag action and stale-response protection. GitHub Actions run [#44908680541](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908680541) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
+- Feature branch only. No checkout, order, payment, production migration/deployment, supplier account, paid service, or main/backup branch was changed.
