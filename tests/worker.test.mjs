@@ -112,8 +112,8 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.equal(payload.success, true);
   assert.equal(payload.inventory_max_age_hours, 72);
   assert.ok(sql.includes("i.verified_at IS NOT NULL"));
-  assert.equal(sql.split("datetime(i.verified_at) >= datetime('now', ?)").length - 1, 2);
-  assert.equal(sql.split("datetime(i.verified_at) <= CURRENT_TIMESTAMP").length - 1, 2);
+  assert.equal(sql.split("datetime(i.verified_at) >= datetime('now', ?)").length - 1, 4);
+  assert.equal(sql.split("datetime(i.verified_at) <= CURRENT_TIMESTAMP").length - 1, 4);
   assert.ok(sql.includes("i.quantity > 0"));
   assert.ok(sql.includes("w.status = 'ACTIVE'"));
   assert.ok(sql.includes("available_quantity"));
@@ -121,7 +121,7 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.ok(sql.includes("pv.status = 'ACTIVE'"));
   assert.ok(sql.includes("vpp.status = 'ACTIVE'"));
   assert.ok(sql.includes("MAX(i.quantity)"));
-  assert.deepEqual(values, ["-72 hours", "BD", "BDT", "-72 hours", "", "", "", "", "", "", "", 25]);
+  assert.deepEqual(values, ["-72 hours", "-72 hours", "-72 hours", "BD", "BDT", "-72 hours", "", "", "", "", "", 25]);
 });
 test("Product catalog uses stable keyset pagination and reports a next cursor", async () => {
   let sql = ""; let values = [];
@@ -237,7 +237,7 @@ test("Product catalog honors a configured inventory freshness limit", async () =
   const payload = await response.json();
   assert.equal(response.status, 200);
   assert.equal(payload.inventory_max_age_hours, 24);
-  assert.equal(values.filter(value => value === "-24 hours").length, 2);
+  assert.equal(values.filter(value => value === "-24 hours").length, 4);
 });
 
 test("Inventory freshness configuration cannot exceed the atomic 72-hour reservation ceiling", async () => {
@@ -249,7 +249,7 @@ test("Inventory freshness configuration cannot exceed the atomic 72-hour reserva
   const payload = await response.json();
   assert.equal(response.status, 200);
   assert.equal(payload.inventory_max_age_hours, 72);
-  assert.equal(values.filter(value => value === "-72 hours").length, 2);
+  assert.equal(values.filter(value => value === "-72 hours").length, 4);
 });
 
 test("Owner inventory list returns stale flags using the configured freshness limit", async () => {
