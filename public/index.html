@@ -164,7 +164,13 @@
   const variantOptions=variants.map(v=>'<option value="'+escapeHTML(v.variant_id)+'">'+escapeHTML(v.variant_name||v.sku)+' — '+escapeHTML(money(v.price_minor,p.currency_symbol,p.decimal_places))+' ('+Number(v.available_quantity)+' available)</option>').join("");
   document.getElementById("modalBody").innerHTML='<p>'+escapeHTML(p.description||"More information will be available as the product listing is completed.")+'</p>'+(p.brand?'<p>Brand: '+escapeHTML(p.brand)+'</p>':"")+(variants.length?'<label for="variantChoice">Choose an option</label><select id="variantChoice" class="filter" style="display:block;width:100%;margin:8px 0 12px">'+variantOptions+'</select><label for="variantQuantity">Quantity</label><input id="variantQuantity" type="number" min="1" max="99" value="1" style="display:block;width:100%;padding:10px;border:1px solid var(--line);margin:8px 0"><button class="outline-btn" id="addToBag" type="button">Add to bag</button>':'<p class="small-note">No verified purchasable options are currently available for this product.</p>');
   const addButton=document.getElementById("addToBag");
-  if(addButton)addButton.addEventListener("click",()=>addToCart(p.product_id,document.getElementById("variantChoice").value,document.getElementById("variantQuantity").value));
+  if(addButton){
+   const choice=document.getElementById("variantChoice"),quantity=document.getElementById("variantQuantity");
+   const syncQuantity=()=>{const selected=variantFor(p,choice.value);const max=Math.min(99,Number(selected?.available_quantity||1));quantity.max=String(max);if(Number(quantity.value)>max)quantity.value=String(max);};
+   choice.addEventListener("change",syncQuantity);
+   addButton.addEventListener("click",()=>{const before=cart.reduce((sum,item)=>sum+item.quantity,0);addToCart(p.product_id,choice.value,quantity.value);const after=cart.reduce((sum,item)=>sum+item.quantity,0);let notice=document.getElementById("bagFeedback");if(!notice){notice=document.createElement("p");notice.id="bagFeedback";notice.className="small-note";notice.setAttribute("role","status");addButton.insertAdjacentElement("afterend",notice);}notice.textContent=after>before?"Added to your bag. No order has been placed.":"Please choose a valid quantity within the confirmed available stock.";});
+   syncQuantity();
+  }
   modal.classList.add("open");document.getElementById("modalClose").focus();
  }
  async function loadProducts(append=false){
@@ -215,7 +221,7 @@
  document.getElementById("backToTop").addEventListener("click",()=>window.scrollTo({top:0,behavior:"smooth"}));
  document.getElementById("modalClose").addEventListener("click",()=>modal.classList.remove("open"));
  modal.addEventListener("click",e=>{if(e.target===modal)modal.classList.remove("open");});
- document.addEventListener("keydown",e=>{if(e.key==="Escape")modal.classList.remove("open");});
+ document.addEventListener("keydown",e=>{if(e.key==="Escape"){modal.classList.remove("open");document.getElementById("cartModal").classList.remove("open");}});
  document.getElementById("year").textContent=new Date().getFullYear();updateSaved();persistCart();loadProducts();
 })();
 </script>
