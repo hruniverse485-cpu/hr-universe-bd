@@ -417,6 +417,8 @@ test("storefront supports incremental product catalog pagination without losing 
 test("storefront offers a variant-aware local shopping bag without submitting orders", () => {
   assert.match(storefrontSource, /id="cartToggle"/);
   assert.match(storefrontSource, /id="cartModal"/);
+  assert.match(storefrontSource, /Selected option unavailable/);
+  assert.match(storefrontSource, /Catalog details not loaded/);
   assert.match(storefrontSource, /hu-cart-v1/);
   assert.match(storefrontSource, /variantChoice/);
   assert.match(storefrontSource, /variantPrices\.length\?"From "\+money\(Math\.min\(\.\.\.variantPrices\)/);
