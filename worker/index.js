@@ -553,6 +553,87 @@ async function listProducts(request, env) {
         c.name AS category_name,
         c.slug AS category_slug,
 
+        (
+          SELECT json_group_array(json_object(
+            'variant_id', eligible.variant_id,
+            'sku', eligible.sku,
+            'variant_name', eligible.variant_name,
+            'attributes_json', eligible.attributes_json,
+            'price_minor', eligible.price_minor,
+            'compare_at_price_minor', eligible.compare_at_price_minor,
+            'available_quantity', eligible.available_quantity
+          ))
+          FROM (
+            SELECT
+              pv.id AS variant_id,
+              pv.sku,
+              pv.variant_name,
+              pv.attributes_json,
+              COALESCE(
+                (
+                  SELECT vpp.price_minor
+                  FROM product_prices vpp
+                  WHERE vpp.product_id = p.id
+                    AND vpp.variant_id = pv.id
+                    AND vpp.country_code = pp.country_code
+                    AND vpp.currency_code = pp.currency_code
+                    AND vpp.status = 'ACTIVE'
+                    AND (vpp.valid_from IS NULL OR datetime(vpp.valid_from) <= CURRENT_TIMESTAMP)
+                    AND (vpp.valid_until IS NULL OR datetime(vpp.valid_until) > CURRENT_TIMESTAMP)
+                  ORDER BY datetime(vpp.valid_from) DESC, vpp.created_at DESC, vpp.id DESC
+                  LIMIT 1
+                ),
+                pp.price_minor
+              ) AS price_minor,
+              COALESCE(
+                (
+                  SELECT vpp.compare_at_price_minor
+                  FROM product_prices vpp
+                  WHERE vpp.product_id = p.id
+                    AND vpp.variant_id = pv.id
+                    AND vpp.country_code = pp.country_code
+                    AND vpp.currency_code = pp.currency_code
+                    AND vpp.status = 'ACTIVE'
+                    AND (vpp.valid_from IS NULL OR datetime(vpp.valid_from) <= CURRENT_TIMESTAMP)
+                    AND (vpp.valid_until IS NULL OR datetime(vpp.valid_until) > CURRENT_TIMESTAMP)
+                  ORDER BY datetime(vpp.valid_from) DESC, vpp.created_at DESC, vpp.id DESC
+                  LIMIT 1
+                ),
+                pp.compare_at_price_minor
+              ) AS compare_at_price_minor,
+              (
+                SELECT MAX(i.quantity)
+                FROM inventory i
+                JOIN warehouses w ON w.id = i.warehouse_id
+                WHERE i.product_id = p.id
+                  AND i.variant_id = pv.id
+                  AND w.country_code = co.country_code
+                  AND w.status = 'ACTIVE'
+                  AND i.verified_at IS NOT NULL
+                  AND datetime(i.verified_at) >= datetime('now', ?)
+                  AND datetime(i.verified_at) <= CURRENT_TIMESTAMP
+                  AND i.quantity > 0
+              ) AS available_quantity
+            FROM product_variants pv
+            WHERE pv.product_id = p.id
+              AND pv.status = 'ACTIVE'
+              AND EXISTS (
+                SELECT 1
+                FROM inventory vi
+                JOIN warehouses vw ON vw.id = vi.warehouse_id
+                WHERE vi.product_id = p.id
+                  AND vi.variant_id = pv.id
+                  AND vw.country_code = co.country_code
+                  AND vw.status = 'ACTIVE'
+                  AND vi.verified_at IS NOT NULL
+                  AND datetime(vi.verified_at) >= datetime('now', ?)
+                  AND datetime(vi.verified_at) <= CURRENT_TIMESTAMP
+                  AND vi.quantity > 0
+              )
+            ORDER BY pv.created_at ASC, pv.id ASC
+          ) eligible
+        ) AS variants_json,
+
         pp.price_minor,
         pp.compare_at_price_minor,
         pp.currency_code,
@@ -639,6 +720,8 @@ async function listProducts(request, env) {
       LIMIT ?
     `).bind(
       inventoryMaxAgeModifier,
+      inventoryMaxAgeModifier,
+      inventoryMaxAgeModifier,
       country,
       currency,
       inventoryMaxAgeModifier,
@@ -666,10 +749,39 @@ async function listProducts(request, env) {
       next_cursor: hasMore && lastRow?.catalog_cursor_created_at && lastRow?.product_id
         ? { created_at: lastRow.catalog_cursor_created_at, id: lastRow.product_id }
         : null,
-      products: pageRows.map(({ catalog_cursor_created_at, ...product }) => ({
-        ...product,
-        image_url: publicCatalogImageUrl(product.image_url, request.url)
-      }))
+      products: pageRows.map(({ catalog_cursor_created_at, variants_json, ...product }) => {
+        let variants = [];
+        try {
+          const parsed = typeof variants_json === "string" ? JSON.parse(variants_json) : variants_json;
+          if (Array.isArray(parsed)) {
+            variants = parsed.filter((variant) =>
+              variant &&
+              typeof variant.variant_id === "string" &&
+              typeof variant.sku === "string" &&
+              Number.isSafeInteger(Number(variant.price_minor)) &&
+              Number(variant.price_minor) > 0 &&
+              Number.isSafeInteger(Number(variant.available_quantity)) &&
+              Number(variant.available_quantity) > 0
+            ).map((variant) => ({
+              variant_id: variant.variant_id,
+              sku: variant.sku,
+              variant_name: variant.variant_name || null,
+              attributes_json: variant.attributes_json || null,
+              price_minor: Number(variant.price_minor),
+              compare_at_price_minor: variant.compare_at_price_minor == null
+                ? null : Number(variant.compare_at_price_minor),
+              available_quantity: Number(variant.available_quantity)
+            }));
+          }
+        } catch {
+          variants = [];
+        }
+        return {
+          ...product,
+          variants,
+          image_url: publicCatalogImageUrl(product.image_url, request.url)
+        };
+      })
     });
 
   } catch (error) {
