@@ -19,7 +19,7 @@
  <div class="header-main">
   <a href="/" aria-label="HR UNIVERSE home" style="color:inherit;text-decoration:none"><div class="brand">HR UNIVERSE<small>DISCOVER YOUR UNIVERSE</small></div></a>
   <label class="search" aria-label="Search products"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search something you’re curious about…" autocomplete="off"></label>
-  <div class="header-actions"><button class="text-action" id="savedToggle" type="button">♡ Saved <span id="savedCount">0</span></button><button class="text-action" id="exploreTop" type="button">Explore ↓</button></div>
+  <div class="header-actions"><button class="text-action" id="savedToggle" type="button">♡ Saved <span id="savedCount">0</span></button><button class="text-action" id="cartToggle" type="button" aria-haspopup="dialog">Bag <span id="cartCount">0</span></button><button class="text-action" id="exploreTop" type="button">Explore ↓</button></div>
  </div>
  <nav class="nav" aria-label="Main navigation">
   <button class="active" data-category="all">Discover</button><button data-category="new">New Arrivals</button><span id="dynamicCategoryNav"></span>
@@ -46,7 +46,8 @@
  <section class="editorial"><div><span class="eyebrow">A better way to browse</span><h2>Your curiosity sets the pace.</h2><p>Save interesting finds for later. Compare details when you’re ready. We’ll keep the experience clear, calm and easy to explore—whether you’re browsing for a moment or staying a little longer.</p></div><button class="outline-btn" id="backToTop" type="button">Back to the beginning ↑</button></section>
 </main>
 <footer class="footer"><div class="footer-inner"><div><div class="brand">HR UNIVERSE</div><p>A thoughtful place to discover useful things, explore new ideas and shop when something feels right. No rush.</p></div><div><strong style="font:20px var(--serif);font-weight:400">Explore with confidence</strong><p>Product availability and prices are shown only when confirmed by our catalog service. Checkout is enabled only for supported markets.</p></div></div><div class="footer-bottom">© <span id="year"></span> HR UNIVERSE. All rights reserved. <span id="marketLabel">Catalog availability depends on your market.</span></div></footer>
-<div class="modal" id="productModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-card"><button class="modal-close" id="modalClose" aria-label="Close" type="button">×</button><span class="eyebrow" id="modalCategory">Product details</span><h2 id="modalTitle">Discover more</h2><div id="modalBody"></div><p class="small-note">Availability, fulfillment and checkout eligibility are confirmed by market. This browsing experience will not create an order.</p></div></div>
+<div class="modal" id="productModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-card"><button class="modal-close" id="modalClose" aria-label="Close" type="button">×</button><span class="eyebrow" id="modalCategory">Product details</span><h2 id="modalTitle">Discover more</h2><div id="modalBody"></div><p class="small-note">Availability, fulfillment and checkout eligibility are confirmed by market. Adding to your bag does not create an order or reserve stock.</p></div></div>
+<div class="modal" id="cartModal" role="dialog" aria-modal="true" aria-labelledby="cartTitle"><div class="modal-card"><button class="modal-close" id="cartClose" aria-label="Close bag" type="button">×</button><span class="eyebrow">Your selection</span><h2 id="cartTitle">Your bag</h2><div id="cartBody"></div><p class="small-note">This is a saved shopping bag only. Prices and availability must be revalidated by the server before checkout. No order or payment is submitted here.</p></div></div>
 <script>
 (() => {
  const COUNTRY = "BD";
@@ -61,6 +62,13 @@
  let category = "all";
  let savedOnly = false;
  let saved = new Set();
+ let cart = [];
+ try {
+   const storedCart = JSON.parse(localStorage.getItem("hu-cart-v1") || "[]");
+   if (Array.isArray(storedCart)) {
+    cart = storedCart.filter(item => item && typeof item.product_id === "string" && item.product_id.length > 0 && item.product_id.length <= 100 && typeof item.variant_id === "string" && item.variant_id.length > 0 && item.variant_id.length <= 100 && Number.isSafeInteger(item.quantity) && item.quantity >= 1 && item.quantity <= 99).slice(0,50);
+   }
+  } catch {}
  try {
    const stored = JSON.parse(localStorage.getItem("hu-saved-products") || "[]");
    if (Array.isArray(stored)) {
@@ -77,6 +85,40 @@
    document.getElementById("savedCount").textContent=saved.size;
    try { localStorage.setItem("hu-saved-products",JSON.stringify([...saved].slice(0,200))); } catch {}
   }
+ function persistCart(){
+  cart=cart.slice(0,50);
+  try { localStorage.setItem("hu-cart-v1",JSON.stringify(cart.map(({product_id,variant_id,quantity})=>({product_id,variant_id,quantity})))); } catch {}
+  document.getElementById("cartCount").textContent=cart.reduce((sum,item)=>sum+item.quantity,0);
+ }
+ function variantFor(product,variantId){return Array.isArray(product?.variants)?product.variants.find(v=>v.variant_id===variantId):null;}
+ function addToCart(productId,variantId,quantity){
+  const product=products.find(p=>String(p.product_id)===String(productId));
+  const variant=variantFor(product,variantId);
+  const qty=Number(quantity);
+  if(!product||!variant||!Number.isSafeInteger(qty)||qty<1||qty>99||qty>Number(variant.available_quantity||0))return;
+  const existing=cart.find(item=>item.product_id===product.product_id&&item.variant_id===variant.variant_id);
+  if(existing){if(existing.quantity+qty>Math.min(99,Number(variant.available_quantity)))return;existing.quantity+=qty;}
+  else {if(cart.length>=50)return;cart.push({product_id:product.product_id,variant_id:variant.variant_id,quantity:qty});}
+  persistCart();
+  document.getElementById("modalBody").insertAdjacentHTML("beforeend",'<p class="small-note" role="status">Added to your bag. No order has been placed.</p>');
+ }
+ function renderCart(){
+  const body=document.getElementById("cartBody");
+  if(!cart.length){body.innerHTML='<p>Your bag is empty. Explore the collection and add a verified variant when you find something you like.</p>';return;}
+  let total=0,known=0;
+  const rows=cart.map((item,index)=>{
+   const p=products.find(product=>product.product_id===item.product_id);
+   const v=variantFor(p,item.variant_id);
+   if(!p||!v)return '<div class="state"><strong>Saved item not loaded</strong>Load the relevant catalog page to refresh its price and availability.</div>';
+   const price=Number(v.price_minor);
+   const available=Number(v.available_quantity);
+   if(!Number.isSafeInteger(price)||price<=0||!Number.isSafeInteger(available)||available<item.quantity)return '<div class="state"><strong>Availability needs checking</strong>'+escapeHTML(p.name)+' — this item is not currently confirmed for the selected quantity.</div>';
+   total+=price*item.quantity;known++;
+   return '<div style="display:flex;justify-content:space-between;gap:14px;padding:14px 0;border-bottom:1px solid var(--line)"><div><strong>'+escapeHTML(p.name)+'</strong><p class="small-note">'+escapeHTML(v.variant_name||v.sku)+' · Qty '+item.quantity+' · '+escapeHTML(money(price,p.currency_symbol,p.decimal_places))+' each</p></div><button class="filter" data-remove-cart="'+index+'" type="button">Remove</button></div>';
+  }).join("");
+  body.innerHTML=rows+(known?'<p><strong>Catalog subtotal (loaded items): '+escapeHTML(money(total,products.find(p=>cart.some(i=>i.product_id===p.product_id))?.currency_symbol,products.find(p=>cart.some(i=>i.product_id===p.product_id))?.decimal_places))+'</strong></p>':"")+'<p class="small-note">Subtotal excludes items whose current catalog details are not loaded or confirmed. Shipping, tax and final payable amount are not calculated here.</p>';
+  body.querySelectorAll("[data-remove-cart]").forEach(button=>button.addEventListener("click",()=>{cart.splice(Number(button.dataset.removeCart),1);persistCart();renderCart();}));
+ }
  function state(title,message,buttonText,handler){grid.innerHTML='<div class="state"><strong>'+escapeHTML(title)+'</strong>'+escapeHTML(message)+(buttonText?'<br><button class="outline-btn" id="stateAction" type="button">'+escapeHTML(buttonText)+'</button>':"")+'</div>';if(buttonText)document.getElementById("stateAction").addEventListener("click",handler);}
  function filtered(){
   const term=search.value.trim().toLowerCase();
@@ -118,7 +160,11 @@
   const p=products.find(x=>String(x.product_id)===String(id));if(!p)return;
   document.getElementById("modalCategory").textContent=p.category_name||"Product details";
   document.getElementById("modalTitle").textContent=p.name||"Discover more";
-  document.getElementById("modalBody").innerHTML='<p>'+escapeHTML(p.description||"More information will be available as the product listing is completed.")+'</p><p><strong>'+escapeHTML(money(p.price_minor,p.currency_symbol,p.decimal_places))+'</strong></p>'+(p.brand?'<p>Brand: '+escapeHTML(p.brand)+'</p>':"");
+  const variants=Array.isArray(p.variants)?p.variants.filter(v=>v&&typeof v.variant_id==="string"&&v.variant_id&&Number(v.price_minor)>0&&Number(v.available_quantity)>0):[];
+  const variantOptions=variants.map(v=>'<option value="'+escapeHTML(v.variant_id)+'">'+escapeHTML(v.variant_name||v.sku)+' — '+escapeHTML(money(v.price_minor,p.currency_symbol,p.decimal_places))+' ('+Number(v.available_quantity)+' available)</option>').join("");
+  document.getElementById("modalBody").innerHTML='<p>'+escapeHTML(p.description||"More information will be available as the product listing is completed.")+'</p>'+(p.brand?'<p>Brand: '+escapeHTML(p.brand)+'</p>':"")+(variants.length?'<label for="variantChoice">Choose an option</label><select id="variantChoice" class="filter" style="display:block;width:100%;margin:8px 0 12px">'+variantOptions+'</select><label for="variantQuantity">Quantity</label><input id="variantQuantity" type="number" min="1" max="99" value="1" style="display:block;width:100%;padding:10px;border:1px solid var(--line);margin:8px 0"><button class="outline-btn" id="addToBag" type="button">Add to bag</button>':'<p class="small-note">No verified purchasable options are currently available for this product.</p>');
+  const addButton=document.getElementById("addToBag");
+  if(addButton)addButton.addEventListener("click",()=>addToCart(p.product_id,document.getElementById("variantChoice").value,document.getElementById("variantQuantity").value));
   modal.classList.add("open");document.getElementById("modalClose").focus();
  }
  async function loadProducts(append=false){
@@ -161,13 +207,16 @@
  document.getElementById("savedToggle").addEventListener("click",()=>{if(!saved.size){state("Your saved finds","Save products with the heart icon and they’ll be waiting here when you return.");return;}savedOnly=!savedOnly;category="all";search.value="";setActive("all");document.getElementById("catalogTitle").textContent=savedOnly?"Your saved finds":"A little of everything";render();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});});
  document.getElementById("savedExplore").addEventListener("click",()=>document.getElementById("savedToggle").click());
  document.getElementById("loadMoreProducts").addEventListener("click",()=>loadProducts(true));
+ document.getElementById("cartToggle").addEventListener("click",()=>{renderCart();document.getElementById("cartModal").classList.add("open");document.getElementById("cartClose").focus();});
+ document.getElementById("cartClose").addEventListener("click",()=>document.getElementById("cartModal").classList.remove("open"));
+ document.getElementById("cartModal").addEventListener("click",event=>{if(event.target.id==="cartModal")event.target.classList.remove("open");});
  document.getElementById("browseButton").addEventListener("click",()=>document.getElementById("catalog").scrollIntoView({behavior:"smooth"}));
  document.getElementById("exploreTop").addEventListener("click",()=>document.getElementById("catalog").scrollIntoView({behavior:"smooth"}));
  document.getElementById("backToTop").addEventListener("click",()=>window.scrollTo({top:0,behavior:"smooth"}));
  document.getElementById("modalClose").addEventListener("click",()=>modal.classList.remove("open"));
  modal.addEventListener("click",e=>{if(e.target===modal)modal.classList.remove("open");});
  document.addEventListener("keydown",e=>{if(e.key==="Escape")modal.classList.remove("open");});
- document.getElementById("year").textContent=new Date().getFullYear();updateSaved();loadProducts();
+ document.getElementById("year").textContent=new Date().getFullYear();updateSaved();persistCart();loadProducts();
 })();
 </script>
 </body></html>
