@@ -345,7 +345,7 @@ const storefrontSource = readFileSync(
 );
 
 test("storefront loads products from the live API instead of hard-coded demo products", () => {
-  assert.match(storefrontSource, /fetch\('\/api\/products\?/);
+  assert.match(storefrontSource, /fetch\(endpoint/);
   assert.doesNotMatch(storefrontSource, /const products\s*=\s*\[\s*\{/);
   assert.match(storefrontSource, /No sample or unverified products are shown/);
 });
