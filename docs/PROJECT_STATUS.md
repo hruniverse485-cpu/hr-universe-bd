@@ -443,3 +443,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - Product detail selectors continue to show each selected variant's own current catalog price. Cart totals are based only on currently loaded variant data and remain provisional until server-side checkout validation exists.
 - GitHub Actions run [#44908736153](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908736153) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
 - Feature branch only; no checkout/order, payment, production deployment/migration, supplier account, paid service, or main/backup branch was changed.
+
+
+## Cart availability messaging (2026-11-21)
+
+- Improved the shopping bag's stale-item handling: a product not yet loaded from a later catalog page is distinguished from a variant that is no longer present among currently eligible options. A loaded variant with insufficient current quantity is separately flagged for review.
+- This avoids incorrectly telling customers that an unavailable variant is merely waiting for another page to load. No stock is reserved and no order is created.
+- GitHub Actions run [#44908779818](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908779818) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
+- Feature branch only; no production checkout/payment/order, production migration/deployment, supplier account, paid service or main/backup branch was changed.
