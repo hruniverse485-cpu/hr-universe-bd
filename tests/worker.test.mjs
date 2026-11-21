@@ -121,8 +121,19 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.ok(sql.includes("pv.status = 'ACTIVE'"));
   assert.ok(sql.includes("vpp.status = 'ACTIVE'"));
   assert.ok(sql.includes("MAX(i.quantity)"));
-  assert.deepEqual(values, ["-72 hours", "-72 hours", "-72 hours", "BD", "BDT", "-72 hours", "", "", "", "", "", "", "", 25]);
+  assert.deepEqual(values, ["-72 hours", "-72 hours", "-72 hours", "BD", "BDT", "-72 hours", "", "", "", "", "", "", "", "", "", 25]);
 });
+test("Product catalog applies validated server-side category filters alongside search", async () => {
+  let sql = ""; let values = [];
+  const DB = { prepare(query) { sql = query; return { bind(...args) { values = args; return { all: async () => ({ results: [] }) }; } }; } };
+  const response = await worker.fetch(request("/api/products?country=BD&currency=BDT&q=cream&category=beauty-care"), { DB });
+  assert.equal(response.status, 200);
+  assert.match(sql, /c\.slug = \?/);
+  assert.deepEqual(values.slice(6, 11), ["cream", "cream", "cream", "beauty-care", "beauty-care"]);
+  const invalid = await worker.fetch(request("/api/products?country=BD&currency=BDT&category=bad%20slug"), { DB: {} });
+  assert.equal(invalid.status, 400);
+});
+
 test("Product catalog uses stable keyset pagination and reports a next cursor", async () => {
   let sql = ""; let values = [];
   const rows = [
@@ -424,6 +435,7 @@ test("storefront provides search, saved products, live category discovery, respo
   assert.match(storefrontSource, /id="searchInput"/);
   assert.match(storefrontSource, /hu-saved-products/);
   assert.match(storefrontSource, /if\(searchTerm\)endpoint\+='&q='/);
+  assert.match(storefrontSource, /endpoint\+='&category='/);
   assert.match(storefrontSource, /setTimeout\(\(\)=>loadProducts\(false\),300\)/);
   assert.match(storefrontSource, /api\/categories\?/);
   assert.match(storefrontSource, /id="dynamicCategoryNav"/);
