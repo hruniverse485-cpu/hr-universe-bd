@@ -419,3 +419,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - Stopped pruning saved-product IDs merely because they are outside the current filtered page; changing search/category should not silently erase a customer's saved finds. Returning to the saved view reloads the unfiltered catalog page before applying the saved filter.
 - Regression coverage checks category validation and SQL binding, combined search/category filtering, server-backed search wiring, saved-ID preservation and bounded New Arrivals behavior. GitHub Actions run [#44908476227](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908476227) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
 - Feature branch only. No checkout/order submission, payment, production migration, deployment, supplier account, paid service, or main/backup branch was changed.
+
+
+## Shopping bag quantity editing (2026-11-21)
+
+- Added in-bag quantity editing for verified variants. The browser clamps the control to the latest catalog stock (maximum 99), validates changes again before saving, and restores the prior display if the requested quantity is invalid.
+- Removing an item or changing its quantity updates the bounded local ID-only bag. No price or inventory value is treated as authoritative, and the bag remains disconnected from checkout and order submission.
+- GitHub Actions run [#44908584015](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908584015) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
+- Feature branch only; no order, payment, production resource, supplier account, paid service, or main/backup branch was changed.
