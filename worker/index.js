@@ -757,6 +757,7 @@ async function listProducts(request, env) {
             variants = parsed.filter((variant) =>
               variant &&
               typeof variant.variant_id === "string" &&
+              variant.variant_id.length > 0 &&
               typeof variant.sku === "string" &&
               Number.isSafeInteger(Number(variant.price_minor)) &&
               Number(variant.price_minor) > 0 &&
