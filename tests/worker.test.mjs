@@ -419,6 +419,7 @@ test("storefront offers a variant-aware local shopping bag without submitting or
   assert.match(storefrontSource, /id="cartModal"/);
   assert.match(storefrontSource, /hu-cart-v1/);
   assert.match(storefrontSource, /variantChoice/);
+  assert.match(storefrontSource, /variantPrices\.length\?"From "\+money\(Math\.min\(\.\.\.variantPrices\)/);
   assert.match(storefrontSource, /addToCart\(p\.product_id/);
   assert.match(storefrontSource, /available_quantity/);
   assert.match(storefrontSource, /syncQuantity/);
