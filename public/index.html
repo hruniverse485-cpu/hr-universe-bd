@@ -184,6 +184,8 @@
    const searchTerm=search.value.trim();
    let endpoint='/api/products?country='+encodeURIComponent(COUNTRY)+'&currency='+encodeURIComponent(CURRENCY)+'&limit=50';
    if(searchTerm)endpoint+='&q='+encodeURIComponent(searchTerm);
+   if(category!=="all"&&category!=="new")endpoint+='&category='+encodeURIComponent(category);
+   if(category==="new")endpoint=endpoint.replace('&limit=50','&limit=12');
    if(append&&nextCursor){endpoint+='&cursor_created_at='+encodeURIComponent(nextCursor.created_at)+'&cursor_id='+encodeURIComponent(nextCursor.id);}
    const response=await fetch(endpoint,{headers:{Accept:"application/json"}});
    const payload=await response.json();
@@ -207,8 +209,8 @@
   }finally{loadingMore=false;if(moreButton){moreButton.disabled=false;moreButton.hidden=!nextCursor;moreButton.textContent="Load more products";}}
  }
  const categoryNav=document.querySelector(".nav");
- categoryNav.addEventListener("click",event=>{const btn=event.target.closest("[data-category]");if(!btn)return;category=btn.dataset.category;setActive(category);document.getElementById("catalogTitle").textContent=category==="new"?"Fresh arrivals":category==="all"?"A little of everything":btn.textContent.trim();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});render();});
- document.querySelectorAll(".discovery [data-category]").forEach(btn=>btn.addEventListener("click",()=>{category=btn.dataset.category;setActive(category);document.getElementById("catalog").scrollIntoView({behavior:"smooth"});render();}));
+ categoryNav.addEventListener("click",event=>{const btn=event.target.closest("[data-category]");if(!btn)return;category=btn.dataset.category;savedOnly=false;setActive(category);document.getElementById("catalogTitle").textContent=category==="new"?"Fresh arrivals":category==="all"?"A little of everything":btn.textContent.trim();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});loadProducts(false);});
+ document.querySelectorAll(".discovery [data-category]").forEach(btn=>btn.addEventListener("click",()=>{category=btn.dataset.category;savedOnly=false;setActive(category);document.getElementById("catalog").scrollIntoView({behavior:"smooth"});loadProducts(false);}));
  let searchTimer=null;
  search.addEventListener("input",()=>{render();clearTimeout(searchTimer);searchTimer=setTimeout(()=>loadProducts(false),300);});document.getElementById("sortSelect").addEventListener("change",render);
  document.getElementById("savedToggle").addEventListener("click",()=>{if(!saved.size){state("Your saved finds","Save products with the heart icon and they’ll be waiting here when you return.");return;}savedOnly=!savedOnly;category="all";search.value="";setActive("all");document.getElementById("catalogTitle").textContent=savedOnly?"Your saved finds":"A little of everything";render();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});});
