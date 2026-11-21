@@ -423,6 +423,8 @@ test("storefront never claims a failed request created a demo order", () => {
 test("storefront provides search, saved products, live category discovery, responsive layout and relaxed browsing copy", () => {
   assert.match(storefrontSource, /id="searchInput"/);
   assert.match(storefrontSource, /hu-saved-products/);
+  assert.match(storefrontSource, /if\(searchTerm\)endpoint\+='&q='/);
+  assert.match(storefrontSource, /setTimeout\(\(\)=>loadProducts\(false\),300\)/);
   assert.match(storefrontSource, /api\/categories\?/);
   assert.match(storefrontSource, /id="dynamicCategoryNav"/);
   assert.match(storefrontSource, /category_slug/);
@@ -431,7 +433,7 @@ test("storefront provides search, saved products, live category discovery, respo
   assert.match(storefrontSource, /prefers-reduced-motion/);
 });
 
-test("storefront saved-products storage tolerates blocked storage and prunes stale entries", () => {
+test("storefront saved-products storage tolerates blocked storage and preserves IDs across filtered pages", () => {
   assert.match(storefrontSource, /if \(Array\.isArray\(stored\)\)/);
   assert.match(storefrontSource, /id\.length <= 100/);
   assert.match(storefrontSource, /slice\(0,200\)/);
