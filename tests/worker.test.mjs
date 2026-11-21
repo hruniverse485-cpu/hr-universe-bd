@@ -400,6 +400,17 @@ test("storefront supports incremental product catalog pagination without losing 
   assert.match(storefrontSource, /products=append\?products\.concat\(payload\.products\):payload\.products/);
   assert.match(storefrontSource, /loadProducts\(true\)/);
 });
+test("storefront offers a variant-aware local shopping bag without submitting orders", () => {
+  assert.match(storefrontSource, /id="cartToggle"/);
+  assert.match(storefrontSource, /id="cartModal"/);
+  assert.match(storefrontSource, /hu-cart-v1/);
+  assert.match(storefrontSource, /variantChoice/);
+  assert.match(storefrontSource, /addToCart\(p\.product_id/);
+  assert.match(storefrontSource, /available_quantity/);
+  assert.match(storefrontSource, /No order or payment is submitted here/);
+  assert.doesNotMatch(storefrontSource, /fetch\(['"]\/api\/orders/);
+});
+
 test("storefront never claims a failed request created a demo order", () => {
   assert.doesNotMatch(storefrontSource, /Demo mode:/i);
   assert.doesNotMatch(storefrontSource, /submitOrder\s*\(/);
