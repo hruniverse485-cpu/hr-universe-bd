@@ -191,7 +191,7 @@
    const payload=await response.json();
    if(!response.ok||!payload.success||!Array.isArray(payload.products))throw new Error(payload.error||"Catalog unavailable");
    products=append?products.concat(payload.products):payload.products;
-   nextCursor=payload.has_more&&payload.next_cursor?payload.next_cursor:null;
+   nextCursor=category!=="new"&&payload.has_more&&payload.next_cursor?payload.next_cursor:null;
    updateSaved();
    if(!append){
     try{
@@ -213,7 +213,7 @@
  document.querySelectorAll(".discovery [data-category]").forEach(btn=>btn.addEventListener("click",()=>{category=btn.dataset.category;savedOnly=false;setActive(category);document.getElementById("catalog").scrollIntoView({behavior:"smooth"});loadProducts(false);}));
  let searchTimer=null;
  search.addEventListener("input",()=>{render();clearTimeout(searchTimer);searchTimer=setTimeout(()=>loadProducts(false),300);});document.getElementById("sortSelect").addEventListener("change",render);
- document.getElementById("savedToggle").addEventListener("click",()=>{if(!saved.size){state("Your saved finds","Save products with the heart icon and they’ll be waiting here when you return.");return;}savedOnly=!savedOnly;category="all";search.value="";setActive("all");document.getElementById("catalogTitle").textContent=savedOnly?"Your saved finds":"A little of everything";render();document.getElementById("catalog").scrollIntoView({behavior:"smooth"});});
+ document.getElementById("savedToggle").addEventListener("click",()=>{if(!saved.size){state("Your saved finds","Save products with the heart icon and they’ll be waiting here when you return.");return;}savedOnly=!savedOnly;category="all";search.value="";setActive("all");document.getElementById("catalogTitle").textContent=savedOnly?"Your saved finds":"A little of everything";loadProducts(false);document.getElementById("catalog").scrollIntoView({behavior:"smooth"});});
  document.getElementById("savedExplore").addEventListener("click",()=>document.getElementById("savedToggle").click());
  document.getElementById("loadMoreProducts").addEventListener("click",()=>loadProducts(true));
  document.getElementById("cartToggle").addEventListener("click",()=>{renderCart();document.getElementById("cartModal").classList.add("open");document.getElementById("cartClose").focus();});
