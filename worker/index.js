@@ -523,7 +523,7 @@ async function listProducts(request, env) {
   if (Boolean(cursorCreatedAt) !== Boolean(cursorId)) {
     return json({ success: false, error: "Both cursor_created_at and cursor_id are required together" }, 400);
   }
-  if (cursorCreatedAt && (!/^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,3})?(?:Z)?$/.test(cursorCreatedAt) || !/^[A-Za-z0-9_-]{1,100}$/.test(cursorId))) {
+  if (cursorCreatedAt && (!/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z)?$/.test(cursorCreatedAt) || !/^[A-Za-z0-9_-]{1,100}$/.test(cursorId))) {
     return json({ success: false, error: "Invalid product catalog cursor" }, 400);
   }
   const inventoryMaxAgeHours = integer(env.HR_INVENTORY_MAX_AGE_HOURS, 1, 72) || 72;
