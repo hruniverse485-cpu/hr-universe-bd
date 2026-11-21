@@ -436,6 +436,8 @@ test("storefront provides search, saved products, live category discovery, respo
   assert.match(storefrontSource, /hu-saved-products/);
   assert.match(storefrontSource, /if\(searchTerm\)endpoint\+='&q='/);
   assert.match(storefrontSource, /endpoint\+='&category='/);
+  assert.match(storefrontSource, /category!=="new"&&payload\.has_more/);
+  assert.match(storefrontSource, /catalogTitle\)\.textContent=savedOnly\?"Your saved finds":"A little of everything";loadProducts\(false\)/);
   assert.match(storefrontSource, /setTimeout\(\(\)=>loadProducts\(false\),300\)/);
   assert.match(storefrontSource, /api\/categories\?/);
   assert.match(storefrontSource, /id="dynamicCategoryNav"/);
