@@ -118,7 +118,35 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.ok(sql.includes("w.status = 'ACTIVE'"));
   assert.ok(sql.includes("available_quantity"));
   assert.ok(sql.includes("MAX(i.quantity)"));
-  assert.deepEqual(values, ["-72 hours", "BD", "BDT", "-72 hours", "", "", "", 24]);
+  assert.deepEqual(values, ["-72 hours", "BD", "BDT", "-72 hours", "", "", "", "", "", "", "", 25]);
+});
+test("Product catalog uses stable keyset pagination and reports a next cursor", async () => {
+  let sql = ""; let values = [];
+  const rows = [
+    { product_id: "p2", catalog_cursor_created_at: "2026-11-20 12:00:00", image_url: null },
+    { product_id: "p1", catalog_cursor_created_at: "2026-11-20 11:00:00", image_url: null },
+    { product_id: "p0", catalog_cursor_created_at: "2026-11-20 10:00:00", image_url: null }
+  ];
+  const DB = { prepare(query) { sql = query; return { bind(...args) { values = args; return { all: async () => ({ results: rows }) }; } }; } };
+  const response = await worker.fetch(request("/api/products?country=BD&currency=BDT&limit=2"), { DB });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.count, 2);
+  assert.equal(payload.has_more, true);
+  assert.deepEqual(payload.next_cursor, { created_at: "2026-11-20 11:00:00", id: "p1" });
+  assert.equal(payload.products.length, 2);
+  assert.equal("catalog_cursor_created_at" in payload.products[0], false);
+  assert.match(sql, /p\.created_at < \?/);
+  assert.match(sql, /p\.created_at = \? AND p\.id < \?/);
+  assert.match(sql, /ORDER BY p\.created_at DESC, p\.id DESC/);
+  assert.equal(values.at(-1), 3);
+});
+
+test("Product catalog rejects incomplete or malformed pagination cursors", async () => {
+  const incomplete = await worker.fetch(request("/api/products?country=BD&currency=BDT&cursor_id=p1"), { DB: {} });
+  assert.equal(incomplete.status, 400);
+  const malformed = await worker.fetch(request("/api/products?country=BD&currency=BDT&cursor_created_at=not-a-date&cursor_id=p1"), { DB: {} });
+  assert.equal(malformed.status, 400);
 });
 test("Public product images expose only same-origin paths, never supplier CDN hosts or signed URLs", async () => {
   const DB = {
@@ -322,6 +350,13 @@ test("storefront loads products from the live API instead of hard-coded demo pro
   assert.match(storefrontSource, /No sample or unverified products are shown/);
 });
 
+test("storefront supports incremental product catalog pagination without losing prior pages", () => {
+  assert.match(storefrontSource, /id="loadMoreProducts"/);
+  assert.match(storefrontSource, /async function loadProducts\(append=false\)/);
+  assert.match(storefrontSource, /cursor_created_at=/);
+  assert.match(storefrontSource, /products=append\?products\.concat\(payload\.products\):payload\.products/);
+  assert.match(storefrontSource, /loadProducts\(true\)/);
+});
 test("storefront never claims a failed request created a demo order", () => {
   assert.doesNotMatch(storefrontSource, /Demo mode:/i);
   assert.doesNotMatch(storefrontSource, /submitOrder\s*\(/);
