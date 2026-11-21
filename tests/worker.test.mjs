@@ -117,6 +117,9 @@ test("Product catalog only lists products with verified active warehouse stock",
   assert.ok(sql.includes("i.quantity > 0"));
   assert.ok(sql.includes("w.status = 'ACTIVE'"));
   assert.ok(sql.includes("available_quantity"));
+  assert.ok(sql.includes("json_group_array"));
+  assert.ok(sql.includes("pv.status = 'ACTIVE'"));
+  assert.ok(sql.includes("vpp.status = 'ACTIVE'"));
   assert.ok(sql.includes("MAX(i.quantity)"));
   assert.deepEqual(values, ["-72 hours", "BD", "BDT", "-72 hours", "", "", "", "", "", "", "", 25]);
 });
@@ -183,6 +186,46 @@ test("Public product images expose only same-origin paths, never supplier CDN ho
   assert.equal(byId.unsafe, null);
   assert.equal(byId["api-route"], null);
   assert.equal(byId.empty, null);
+});
+
+test("Public product variants expose only valid priced active variants and omit malformed JSON", async () => {
+  const DB = {
+    prepare() {
+      return {
+        bind() {
+          return {
+            all: async () => ({
+              results: [
+                {
+                  product_id: "p1",
+                  variants_json: JSON.stringify([
+                    { variant_id: "v1", sku: "SKU-1", variant_name: "Blue / M", attributes_json: '{"color":"Blue","size":"M"}', price_minor: 12500, compare_at_price_minor: 15000, available_quantity: 3 },
+                    { variant_id: "v2", sku: "SKU-2", price_minor: 0, available_quantity: 2 },
+                    { variant_id: "v3", sku: "SKU-3", price_minor: 9000, available_quantity: 0 },
+                    { variant_id: "", sku: "SKU-4", price_minor: 9000, available_quantity: 1 }
+                  ])
+                },
+                { product_id: "p2", variants_json: "{invalid-json" }
+              ]
+            })
+          };
+        }
+      };
+    }
+  };
+  const response = await worker.fetch(request("/api/products?country=BD&currency=BDT"), { DB });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.products[0].variants, [{
+    variant_id: "v1",
+    sku: "SKU-1",
+    variant_name: "Blue / M",
+    attributes_json: '{"color":"Blue","size":"M"}',
+    price_minor: 12500,
+    compare_at_price_minor: 15000,
+    available_quantity: 3
+  }]);
+  assert.deepEqual(payload.products[1].variants, []);
 });
 
 test("Product catalog honors a configured inventory freshness limit", async () => {
