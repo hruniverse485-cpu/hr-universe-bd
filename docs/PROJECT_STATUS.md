@@ -435,3 +435,11 @@ At every work session, record the current branch/head commit, changed files, tes
 - Added a monotonically increasing catalog request sequence so a slower earlier search/category response cannot overwrite a newer selection. A new search can supersede an in-flight load-more request; stale responses do not reset the active loading state.
 - Added regression assertions for the clear-bag action and stale-response protection. GitHub Actions run [#44908680541](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908680541) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
 - Feature branch only. No checkout, order, payment, production migration/deployment, supplier account, paid service, or main/backup branch was changed.
+
+
+## Variant-aware product card pricing (2026-11-21)
+
+- Updated product cards to display the lowest currently eligible, fresh-stock variant price with a 'From' label whenever verified variants are returned. This avoids presenting the product-level fallback price as if it were the only option price when variant-specific prices differ.
+- Product detail selectors continue to show each selected variant's own current catalog price. Cart totals are based only on currently loaded variant data and remain provisional until server-side checkout validation exists.
+- GitHub Actions run [#44908736153](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908736153) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
+- Feature branch only; no checkout/order, payment, production deployment/migration, supplier account, paid service, or main/backup branch was changed.
