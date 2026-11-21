@@ -407,6 +407,9 @@ test("storefront loads products from the live API instead of hard-coded demo pro
 test("storefront supports incremental product catalog pagination without losing prior pages", () => {
   assert.match(storefrontSource, /id="loadMoreProducts"/);
   assert.match(storefrontSource, /async function loadProducts\(append=false\)/);
+  assert.match(storefrontSource, /catalogRequestSequence/);
+  assert.match(storefrontSource, /if\(requestId!==catalogRequestSequence\)return/);
+  assert.match(storefrontSource, /if\(append&&loadingMore\)return/);
   assert.match(storefrontSource, /cursor_created_at=/);
   assert.match(storefrontSource, /products=append\?products\.concat\(payload\.products\):payload\.products/);
   assert.match(storefrontSource, /loadProducts\(true\)/);
