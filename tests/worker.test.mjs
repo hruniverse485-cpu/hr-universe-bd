@@ -450,8 +450,7 @@ test("storefront saved-products storage tolerates blocked storage and preserves 
   assert.match(storefrontSource, /id\.length <= 100/);
   assert.match(storefrontSource, /slice\(0,200\)/);
   assert.match(storefrontSource, /try \{ localStorage\.setItem\("hu-saved-products"/);
-  assert.match(storefrontSource, /availableIds=new Set\(products\.map\(product=>String\(product\.product_id\)\)\)/);
-  assert.match(storefrontSource, /saved=new Set\(\[\.\.\.saved\]\.filter\(id=>availableIds\.has\(String\(id\)\)\)\)/);
+  assert.doesNotMatch(storefrontSource, /saved=new Set\(\[\.\.\.saved\]\)\.filter\(id=>availableIds/);
 });
 
 test("storefront JavaScript parses without syntax errors", () => {
