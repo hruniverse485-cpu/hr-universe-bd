@@ -110,7 +110,8 @@
   const rows=cart.map((item,index)=>{
    const p=products.find(product=>product.product_id===item.product_id);
    const v=variantFor(p,item.variant_id);
-   if(!p||!v)return '<div class="state"><strong>Saved item not loaded</strong>Load the relevant catalog page to refresh its price and availability.</div>';
+   if(!p)return '<div class="state"><strong>Catalog details not loaded</strong>Load more catalog pages to refresh this saved item.</div>';
+   if(!v)return '<div class="state"><strong>Selected option unavailable</strong>'+escapeHTML(p.name)+' — this variant is no longer currently confirmed.</div>';
    const price=Number(v.price_minor);
    const available=Number(v.available_quantity);
    if(!Number.isSafeInteger(price)||price<=0||!Number.isSafeInteger(available)||available<item.quantity)return '<div class="state"><strong>Availability needs checking</strong>'+escapeHTML(p.name)+' — this item is not currently confirmed for the selected quantity.</div>';
