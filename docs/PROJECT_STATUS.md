@@ -409,3 +409,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - The bag is deliberately not connected to order creation or payment. Server-side checkout revalidation, shipping/tax calculation, payment eligibility and a complete fulfillment flow remain separate release gates. The UI explicitly states that adding an item does not reserve stock or place an order.
 - Added regression tests for variant selection, quantity bounds, ID-only bag persistence and the no-order/no-payment boundary. GitHub Actions run [#44908263088](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908263088) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
 - Feature branch only. No production order, payment, migration, deployment, supplier account, paid service, or main/backup branch was changed.
+
+
+## Server-backed catalog search and category navigation (2026-11-21)
+
+- Connected storefront search to the public catalog API's existing bounded q filter with a short input debounce. Search now runs across the full eligible catalog rather than only the products already loaded in the browser; pagination carries the same search term.
+- Added a validated category slug filter to the public product API and applied it to the category navigation and discovery tiles. Invalid category slugs return HTTP 400. Category filtering and text search can be combined while preserving keyset pagination.
+- New Arrivals requests the newest 12 items and does not expose a misleading Load more control for that curated slice.
+- Stopped pruning saved-product IDs merely because they are outside the current filtered page; changing search/category should not silently erase a customer's saved finds. Returning to the saved view reloads the unfiltered catalog page before applying the saved filter.
+- Regression coverage checks category validation and SQL binding, combined search/category filtering, server-backed search wiring, saved-ID preservation and bounded New Arrivals behavior. GitHub Actions run [#44908476227](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908476227) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
+- Feature branch only. No checkout/order submission, payment, production migration, deployment, supplier account, paid service, or main/backup branch was changed.
