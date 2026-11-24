@@ -401,7 +401,7 @@ const storefrontSource = readFileSync(
 test("storefront loads products from the live API instead of hard-coded demo products", () => {
   assert.match(storefrontSource, /fetch\(endpoint/);
   assert.doesNotMatch(storefrontSource, /const products\s*=\s*\[\s*\{/);
-  assert.match(storefrontSource, /কোনো নমুনা বা অযাচাইকৃত পণ্য দেখাই না/);
+  assert.match(storefrontSource, /No sample or unverified products are shown/);
 });
 
 test("storefront supports incremental product catalog pagination without losing prior pages", () => {
@@ -2061,7 +2061,7 @@ const bangladeshStorefrontSource = readFileSync(
 test("Bangladesh storefront uses live BD/BDT catalog and configured shipping quote", () => {
   assert.match(bangladeshStorefrontSource, /api\/products\?country=BD&currency=BDT/);
   assert.match(bangladeshStorefrontSource, /api\/shipping\/quote\?country=BD&currency=BDT/);
-  assert.match(bangladeshStorefrontSource, /No sample or unverified products are shown/);
+  assert.match(bangladeshStorefrontSource, /কোনো নমুনা বা অযাচাইকৃত পণ্য দেখাই না/);
   assert.doesNotMatch(bangladeshStorefrontSource, /const products\s*=\s*\[\s*\{/);
 });
 
