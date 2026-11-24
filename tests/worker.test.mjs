@@ -2012,3 +2012,66 @@ test("COD operations dashboard parses and keeps owner token out of browser stora
   assert.match(html, /PENDING REVIEW/);
   assert.match(html, /inventory was not changed/i);
 });
+
+
+test("Bangladesh shipping quote returns only an active BDT local-warehouse base rate", async () => {
+  let sql = "";
+  const DB = { prepare(query) { sql = query; return { first: async () => ({
+    shipping_cost_minor: 850, estimated_min_days: 2, estimated_max_days: 5,
+    currency_symbol: "৳", decimal_places: 0, country_code: "BD", currency_code: "BDT"
+  }) }; } };
+  const response = await worker.fetch(request("/api/shipping/quote?country=BD&currency=BDT"), { DB });
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.shipping_cost_minor, 850);
+  assert.equal(payload.fulfillment_type, "LOCAL_WAREHOUSE");
+  assert.equal(payload.coverage_scope, "COUNTRY_LEVEL_BASE_RATE");
+  assert.match(payload.coverage_note, /district-specific courier confirmation/i);
+  assert.match(sql, /sr.status = 'ACTIVE'/);
+  assert.match(sql, /sm.fulfillment_type = 'LOCAL_WAREHOUSE'/);
+  assert.match(sql, /co.is_active = 1/);
+  assert.match(sql, /cur.is_active = 1/);
+});
+
+test("Bangladesh shipping quote refuses to invent a rate when none is configured", async () => {
+  const DB = { prepare() { return { first: async () => null }; } };
+  const response = await worker.fetch(request("/api/shipping/quote?country=BD&currency=BDT"), { DB });
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /not configured/i);
+});
+
+test("Bangladesh shipping quote rejects other markets and methods before database access", async () => {
+  const response = await worker.fetch(request("/api/shipping/quote?country=US&currency=USD"), {
+    DB: { prepare() { throw new Error("Database must not be queried"); } }
+  });
+  assert.equal(response.status, 400);
+});
+
+test("Bangladesh route redirects /bd to the dedicated storefront path", async () => {
+  const response = await worker.fetch(request("/bd"), {});
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "https://example.com/bd/");
+});
+
+const bangladeshStorefrontSource = readFileSync(
+  new URL("../public/bd/index.html", import.meta.url),
+  "utf8"
+);
+
+test("Bangladesh storefront uses live BD/BDT catalog and configured shipping quote", () => {
+  assert.match(bangladeshStorefrontSource, /api\/products\?country=BD&currency=BDT/);
+  assert.match(bangladeshStorefrontSource, /api\/shipping\/quote\?country=BD&currency=BDT/);
+  assert.match(bangladeshStorefrontSource, /No sample or unverified products are shown/);
+  assert.doesNotMatch(bangladeshStorefrontSource, /const products\s*=\s*\[\s*\{/);
+});
+
+test("Bangladesh storefront submits only server-validated COD order identifiers and quantities", () => {
+  assert.match(bangladeshStorefrontSource, /fetch\("\/api\/orders"/);
+  assert.match(bangladeshStorefrontSource, /Idempotency-Key/);
+  assert.match(bangladeshStorefrontSource, /payment_method:"COD"/);
+  assert.match(bangladeshStorefrontSource, /country_code:"BD",currency_code:"BDT"/);
+  assert.match(bangladeshStorefrontSource, /delivery coverage is checked by the HR UNIVERSE team/i);
+  assert.match(bangladeshStorefrontSource, /Pending/);
+  assert.doesNotMatch(bangladeshStorefrontSource, /product_name:selected\.name/);
+});
+

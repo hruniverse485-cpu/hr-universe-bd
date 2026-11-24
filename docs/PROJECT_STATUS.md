@@ -451,3 +451,13 @@ At every work session, record the current branch/head commit, changed files, tes
 - This avoids incorrectly telling customers that an unavailable variant is merely waiting for another page to load. No stock is reserved and no order is created.
 - GitHub Actions run [#44908779818](https://github.com/hruniverse485-cpu/hr-universe-bd/actions/runs/44908779818) passed Worker syntax, all Worker API route tests and ordered SQL migration validation.
 - Feature branch only; no production checkout/payment/order, production migration/deployment, supplier account, paid service or main/backup branch was changed.
+
+ 
+## Bangladesh customer storefront foundation (2026-11-24)
+
+- Added a dedicated mobile-first Bangladesh storefront at `/bd/`, separate from the international marketplace preparation. It reads only the live BD/BDT public catalog and verified local-warehouse variants; no sample products, invented prices, or unverified supplier stock are displayed.
+- Added a read-only `GET /api/shipping/quote?country=BD&currency=BDT` endpoint. It returns only an active Bangladesh BDT local-warehouse base rate and its configured delivery estimate. The response explicitly labels the rate as country-level, not district-specific, and says delivery coverage must be checked by the HR UNIVERSE team.
+- The Bangladesh storefront includes server-backed search/category browsing, bounded catalog pagination, an ID-only local shopping bag, visible configured shipping and estimated total, and a COD order form. The order request sends only product/variant IDs and quantities plus customer-provided contact/delivery details; the existing Worker remains authoritative for price, fresh stock, market eligibility, shipping and atomic inventory reservation. Idempotency-Key prevents accidental duplicate submissions.
+- Customer orders remain PENDING until owner review and delivery coverage confirmation. The interface does not claim courier booking, live tracking, automatic supplier fulfillment, or guaranteed delivery. No supplier direct-to-customer flow is activated by this storefront.
+- This is a feature-branch implementation only. No production deployment, production D1 migration, live order, payment activation, courier integration, paid service, supplier communication, or main/backup branch modification was performed. Bangladesh launch still requires owner verification of active catalog/stock/prices, shipping-rate setup, courier service coverage, customer support/policy details, and explicit production deployment approval.
+- International/USA-first marketplace work remains a separate track and is not activated by this Bangladesh storefront.

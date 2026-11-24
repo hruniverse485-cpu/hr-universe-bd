@@ -805,6 +805,78 @@ async function listProducts(request, env) {
   }
 }
 
+
+async function getBangladeshShippingQuote(request, env) {
+  if (request.method !== "GET") {
+    return json({ success: false, error: "Method not allowed" }, 405);
+  }
+  if (!env.DB) {
+    return json({ success: false, error: "Database connection unavailable" }, 503);
+  }
+  const url = new URL(request.url);
+  const country = text(url.searchParams.get("country"), 10).toUpperCase();
+  const currency = text(url.searchParams.get("currency"), 10).toUpperCase();
+  if (country !== "BD" || currency !== "BDT") {
+    return json({ success: false, error: "Only the Bangladesh BDT shipping quote is currently supported" }, 400);
+  }
+  try {
+    const rate = await env.DB.prepare(`
+      SELECT
+        sr.base_cost_minor AS shipping_cost_minor,
+        sr.estimated_min_days,
+        sr.estimated_max_days,
+        cur.symbol AS currency_symbol,
+        cur.decimal_places,
+        co.country_code,
+        cur.code AS currency_code
+      FROM shipping_rates sr
+      JOIN shipping_methods sm
+        ON sm.id = sr.shipping_method_id
+       AND sm.status = 'ACTIVE'
+       AND sm.fulfillment_type = 'LOCAL_WAREHOUSE'
+      JOIN countries co
+        ON co.country_code = sr.country_code
+       AND co.is_active = 1
+      JOIN currencies cur
+        ON cur.code = sr.currency_code
+       AND cur.is_active = 1
+      WHERE sr.country_code = 'BD'
+        AND sr.currency_code = 'BDT'
+        AND sr.status = 'ACTIVE'
+      ORDER BY sr.base_cost_minor ASC
+      LIMIT 1
+    `).first();
+    if (!rate) {
+      return json({
+        success: false,
+        error: "Bangladesh local shipping is not configured yet"
+      }, 409);
+    }
+    const amount = Number(rate.shipping_cost_minor);
+    const decimals = Number(rate.decimal_places);
+    if (!Number.isSafeInteger(amount) || amount < 0 ||
+        !Number.isInteger(decimals) || decimals < 0 || decimals > 4) {
+      return json({ success: false, error: "Shipping configuration is invalid" }, 500);
+    }
+    return json({
+      success: true,
+      country: "BD",
+      currency: "BDT",
+      currency_symbol: rate.currency_symbol || "৳",
+      decimal_places: decimals,
+      shipping_cost_minor: amount,
+      estimated_min_days: Number.isInteger(Number(rate.estimated_min_days)) ? Number(rate.estimated_min_days) : null,
+      estimated_max_days: Number.isInteger(Number(rate.estimated_max_days)) ? Number(rate.estimated_max_days) : null,
+      fulfillment_type: "LOCAL_WAREHOUSE",
+      coverage_scope: "COUNTRY_LEVEL_BASE_RATE",
+      coverage_note: "This is the configured Bangladesh base rate, not a district-specific courier confirmation. Delivery coverage is checked by the HR UNIVERSE team before order confirmation."
+    });
+  } catch (error) {
+    console.error("Bangladesh shipping quote lookup failed:", error);
+    return json({ success: false, error: "Unable to load Bangladesh shipping quote" }, 500);
+  }
+}
+
 async function listCategories(request, env) {
   if (!env.DB) return json({ success: false, error: "Database connection unavailable" }, 503);
   const url = new URL(request.url);
@@ -2965,6 +3037,8 @@ export default {
       return compareSupplierOffers(request, env);
     }
 
+    if (path === "/api/shipping/quote") return getBangladeshShippingQuote(request, env);
+
     if (path === "/api/categories") {
       if (request.method !== "GET") return json({ success: false, error: "Method not allowed" }, 405);
       return listCategories(request, env);
@@ -3000,6 +3074,13 @@ export default {
         success: false,
         error: "API endpoint not found"
       }, 404);
+    }
+
+    if (path === "/bd") {
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return json({ success: false, error: "Method not allowed" }, 405);
+      }
+      return Response.redirect(new URL("/bd/", request.url), 302);
     }
 
     if (env.ASSETS) {
