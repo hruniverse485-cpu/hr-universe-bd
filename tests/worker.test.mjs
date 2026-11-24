@@ -401,7 +401,7 @@ const storefrontSource = readFileSync(
 test("storefront loads products from the live API instead of hard-coded demo products", () => {
   assert.match(storefrontSource, /fetch\(endpoint/);
   assert.doesNotMatch(storefrontSource, /const products\s*=\s*\[\s*\{/);
-  assert.match(storefrontSource, /No sample or unverified products are shown/);
+  assert.match(storefrontSource, /কোনো নমুনা বা অযাচাইকৃত পণ্য দেখাই না/);
 });
 
 test("storefront supports incremental product catalog pagination without losing prior pages", () => {
@@ -2050,7 +2050,7 @@ test("Bangladesh shipping quote rejects other markets and methods before databas
 test("Bangladesh route redirects /bd to the dedicated storefront path", async () => {
   const response = await worker.fetch(request("/bd"), {});
   assert.equal(response.status, 302);
-  assert.equal(response.headers.get("location"), "https://example.com/bd/");
+  assert.equal(response.headers.get("location"), "https://hr-universe.test/bd/");
 });
 
 const bangladeshStorefrontSource = readFileSync(
@@ -2070,7 +2070,7 @@ test("Bangladesh storefront submits only server-validated COD order identifiers 
   assert.match(bangladeshStorefrontSource, /Idempotency-Key/);
   assert.match(bangladeshStorefrontSource, /payment_method:"COD"/);
   assert.match(bangladeshStorefrontSource, /country_code:"BD",currency_code:"BDT"/);
-  assert.match(bangladeshStorefrontSource, /delivery coverage is checked by the HR UNIVERSE team/i);
+  assert.match(bangladeshStorefrontSource, /ডেলিভারি কভারেজ যাচাই করে যোগাযোগ করবে/);
   assert.match(bangladeshStorefrontSource, /Pending/);
   assert.doesNotMatch(bangladeshStorefrontSource, /product_name:selected\.name/);
 });

@@ -58,7 +58,7 @@
 (function(){
 "use strict";
 const COUNTRY="BD",CURRENCY="BDT",CART_KEY="hu-bd-cart-v1";
-let products=[],cart=[],categories=[],category="",query="",cursor=null,requestSequence=0,shipping=null,submitting=false;
+let products=[],cart=[],categories=[],category="",query="",cursor=null,requestSequence=0,shipping=null,submitting=false,pendingOrderKey=null,pendingOrderFingerprint=null;
 const $=id=>document.getElementById(id);
 const escapeHTML=value=>String(value==null?"":value).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
 function money(minor,symbol,decimals){const d=Number.isInteger(Number(decimals))?Number(decimals):0;return (symbol||"৳")+((Number(minor)||0)/Math.pow(10,d)).toLocaleString("en-BD",{minimumFractionDigits:d,maximumFractionDigits:d});}
@@ -142,14 +142,15 @@ async function submitOrder(event){
  const digits=phone.replace(/\D/g,"");
  if(!name||digits.length<10||digits.length>14||!address||!district||!$("confirmDetails").checked){$("orderMessage").innerHTML='<p class="error">সঠিক নাম, মোবাইল নম্বর, জেলা, ঠিকানা ও সম্মতি প্রয়োজন।</p>';return;}
  const payload={country_code:"BD",currency_code:"BDT",payment_method:"COD",customer:{name:name,phone:phone,address:address,district:district},items:lines.map(x=>({product_id:x.item.product_id,variant_id:x.item.variant_id,quantity:x.item.quantity}))};
+ const requestFingerprint=JSON.stringify(payload);
+ if(!pendingOrderKey||pendingOrderFingerprint!==requestFingerprint){pendingOrderKey="hu-bd-"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(36).slice(2));pendingOrderFingerprint=requestFingerprint;}
  submitting=true;$("placeOrder").disabled=true;$("placeOrder").textContent="অর্ডার যাচাই হচ্ছে...";$("orderMessage").textContent="";
  try{
-  const key="hu-bd-"+(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(36).slice(2));
-  const r=await fetch("/api/orders",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json","Idempotency-Key":key},body:JSON.stringify(payload)});
+  const r=await fetch("/api/orders",{method:"POST",headers:{"Content-Type":"application/json","Accept":"application/json","Idempotency-Key":pendingOrderKey},body:JSON.stringify(payload)});
   const j=await r.json().catch(()=>null);
   if(!r.ok||!j||!j.success)throw new Error(j&&j.error||"অর্ডার জমা দেওয়া যায়নি");
   $("orderMessage").innerHTML='<div class="success"><strong>অর্ডার অনুরোধ গ্রহণ করা হয়েছে।</strong><br>অর্ডার নম্বর: '+escapeHTML(j.order.id)+'<br>অবস্থা: Pending<br>সর্বমোট: '+escapeHTML(money(j.order.total_minor,shipping.currency_symbol,shipping.decimal_places))+'<br>আমাদের টিম ডেলিভারি কভারেজ ও অর্ডার নিশ্চিত করতে যোগাযোগ করবে।</div>';
-  cart=[];saveCart();$("checkoutForm").reset();$("placeOrder").textContent="অর্ডার জমা হয়েছে";$("placeOrder").disabled=true;
+  pendingOrderKey=null;pendingOrderFingerprint=null;cart=[];saveCart();$("checkoutForm").reset();$("placeOrder").textContent="অর্ডার জমা হয়েছে";$("placeOrder").disabled=true;
  }catch(e){$("orderMessage").innerHTML='<p class="error">'+escapeHTML(e.message||"অর্ডার জমা দেওয়া যায়নি")+'</p>';$("placeOrder").disabled=false;$("placeOrder").textContent="আবার চেষ্টা করুন";}
  finally{submitting=false;}
 }
