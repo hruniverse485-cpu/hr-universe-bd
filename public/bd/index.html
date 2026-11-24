@@ -121,7 +121,7 @@ function renderBag(){
  $("bagBody").querySelectorAll("[data-remove]").forEach(b=>b.addEventListener("click",()=>{cart.splice(Number(b.dataset.remove),1);saveCart();renderBag();}));
  const p=lines.find(x=>x.valid)?.p;const sym=p&&p.currency_symbol||"৳",dec=p&&p.decimal_places||0;
  const ship=shipping?Number(shipping.shipping_cost_minor):null;
- $("bagTotals").innerHTML='<div><span>পণ্যের মূল্য</span><strong>'+escapeHTML(money(subtotal,sym,dec))+'</strong></div><div><span>স্ট্যান্ডার্ড শিপিং</span><strong>'+(ship===null?"যাচাই হচ্ছে":escapeHTML(money(ship,sym,dec)))+'</strong></div><div><span>মোট (আনুমানিক)</span><strong>'+(ship===null?"—":escapeHTML(money(subtotal+ship,sym,dec)))+'</strong></div><p class="muted">'+(shipping?escapeHTML(shipping.coverage_note):"শিপিং রেট এখনো কনফিগার করা নেই।")+'</p>';
+ $("bagTotals").innerHTML='<div><span>পণ্যের মূল্য</span><strong>'+escapeHTML(money(subtotal,sym,dec))+'</strong></div><div><span>স্ট্যান্ডার্ড শিপিং</span><strong>'+(ship===null?"যাচাই হচ্ছে":escapeHTML(money(ship,sym,dec)))+'</strong></div><div><span>মোট (আনুমানিক)</span><strong>'+(ship===null?"—":escapeHTML(money(subtotal+ship,sym,dec)))+'</strong></div><p class="muted">'+(shipping&&shipping.estimated_min_days!==null&&shipping.estimated_max_days!==null?("প্রাক্কলিত ডেলিভারি: "+shipping.estimated_min_days+"–"+shipping.estimated_max_days+" দিন। "):"")+(shipping?escapeHTML(shipping.coverage_note):"শিপিং রেট এখনো কনফিগার করা নেই।")+'</p>';
  $("checkoutBtn").disabled=!cart.length||!valid||!shipping;
 }
 async function loadShipping(){try{const r=await fetch("/api/shipping/quote?country=BD&currency=BDT",{headers:{Accept:"application/json"}}),j=await r.json();if(r.ok&&j.success)shipping=j;else shipping=null;}catch{shipping=null;}}

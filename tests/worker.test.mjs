@@ -2075,3 +2075,11 @@ test("Bangladesh storefront submits only server-validated COD order identifiers 
   assert.doesNotMatch(bangladeshStorefrontSource, /product_name:selected\.name/);
 });
 
+
+
+test("Bangladesh storefront inline JavaScript parses without executing browser code", () => {
+  const script = bangladeshStorefrontSource.match(/<script>([\\s\\S]*?)<\\/script>/);
+  assert.ok(script, "Bangladesh storefront script should exist");
+  assert.doesNotThrow(() => new Function(script[1]));
+});
+
